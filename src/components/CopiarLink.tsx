@@ -1,15 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { Check, Copy } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
-export default function CopiarLink({ link }: { link: string }) {
+export default function CopiarLink({ link, className }: { link: string; className?: string }) {
   const [copiado, setCopiado] = useState(false);
   return (
-    <div className="copiar">
-      <input className="campo" readOnly value={link} onFocus={(e) => e.target.select()} />
-      <button
+    <div className={cn("flex w-full items-center gap-2", className)}>
+      <Input readOnly value={link} onFocus={(e) => e.target.select()} className="num h-8 min-w-0 flex-1 font-mono text-xs" />
+      <Button
         type="button"
-        className="btn"
+        variant="outline"
+        size="sm"
         onClick={async () => {
           try {
             await navigator.clipboard.writeText(link);
@@ -20,8 +25,9 @@ export default function CopiarLink({ link }: { link: string }) {
           }
         }}
       >
+        {copiado ? <Check className="text-success" /> : <Copy />}
         {copiado ? "Copiado" : "Copiar"}
-      </button>
+      </Button>
     </div>
   );
 }

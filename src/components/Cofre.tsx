@@ -6,6 +6,14 @@ import {
   situacaoDocumento,
   type DocumentoResumo,
 } from "@/lib/documentos";
+import { FileText, Loader2, Pencil, Trash2, Upload } from "lucide-react";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { NativeSelect } from "./ui/native-select";
+import { Campo } from "./ui/campo";
+import { Aviso } from "./ui/aviso";
+import { StatusDot } from "./ui/status-dot";
+import { useConfirmar } from "./ui/confirmar";
 
 export interface SaidaCofre {
   ok: boolean;
@@ -37,6 +45,7 @@ export default function Cofre({ documentos: iniciais, modo, pedirUpload, registr
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
   const [editando, setEditando] = useState<string | null>(null);
   const arquivoRef = useRef<HTMLInputElement>(null);
+  const [confirmar, dialogo] = useConfirmar();
 
   async function enviar(arquivos: FileList | null) {
     if (!arquivos?.length) return;
@@ -85,19 +94,18 @@ export default function Cofre({ documentos: iniciais, modo, pedirUpload, registr
   }
 
   return (
-    <div className="cofre">
-      <div className="cofre-envio">
-        <label className="campo-rotulado">
-          <span>Tipo do documento</span>
-          <select className="campo" value={tipoEnvio} onChange={(e) => setTipoEnvio(e.target.value)}>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <Campo rotulo="Tipo do documento" className="sm:w-72">
+          <NativeSelect value={tipoEnvio} onChange={(e) => setTipoEnvio(e.target.value)}>
             <option value="">Identificar automaticamente</option>
             {TIPOS_DOCUMENTO.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.rotulo}
               </option>
             ))}
-          </select>
-        </label>
+          </NativeSelect>
+        </Campo>
         <input
           ref={arquivoRef}
           type="file"
@@ -106,56 +114,90 @@ export default function Cofre({ documentos: iniciais, modo, pedirUpload, registr
           hidden
           onChange={(e) => enviar(e.target.files)}
         />
-        <button className="btn btn-primario" disabled={enviando != null} onClick={() => arquivoRef.current?.click()}>
-          {enviando ? `Enviando ${enviando}…` : "Enviar documentos"}
-        </button>
-        <p className="dica">
-          PDF, JPG ou PNG até 20 MB. {modo === "cliente" ? "Lemos o tipo e a validade de cada PDF." : "A IA lê tipo, validade e confere o CNPJ de cada PDF."}
-        </p>
+        <Button disabled={enviando != null} onClick={() => arquivoRef.current?.click()} className="sm:w-auto">
+          {enviando ? <Loader2 className="animate-spin" /> : <Upload />}
+          <span className="truncate">{enviando ? `Enviando ${enviando}…` : "Enviar documentos"}</span>
+        </Button>
       </div>
+      <p className="-mt-2 text-xs text-muted-foreground">
+        PDF, JPG ou PNG até 20 MB.{" "}
+        {modo === "cliente" ? "Lemos o tipo e a validade de cada PDF." : "A IA lê tipo, validade e confere o CNPJ de cada PDF."}
+      </p>
 
-      {aviso && (
-        <p className={`aviso ${aviso.ok ? "" : "aviso-erro"}`} role="status">
-          {aviso.texto}
-        </p>
-      )}
+      {aviso && <Aviso tom={aviso.ok ? "sucesso" : "erro"}>{aviso.texto}</Aviso>}
 
-      {GRUPOS.map((grupo) => (
-        <div key={grupo} className="cofre-grupo">
-          <h4 className="cofre-grupo-titulo">{grupo}</h4>
-          {TIPOS_DOCUMENTO.filter((t) => t.grupo === grupo).map((t) => {
-            const doTipo = docs.filter((d) => d.tipo === t.id);
-            if (doTipo.length === 0 && (t.id === "outro" || modo === "cliente")) return null;
-            const atual = doTipo[0];
-            return (
-              <div key={t.id} className="cofre-linha">
-                <span className="cofre-tipo">{t.rotulo}</span>
-                {atual ? (
-                  <>
-                    <Situacao validade={atual.validade} vence={t.vence} />
-                    <button className="link-doc" onClick={() => abrir(atual.id)} title={atual.nome_arquivo}>
-                      {atual.nome_arquivo}
-                    </button>
-                    {modo === "operador" && atualizar && (
-                      <span className="cofre-acoes">
-                        <button className="btn btn-discreto" onClick={() => setEditando(editando === atual.id ? null : atual.id)}>
-                          Editar
-                        </button>
-                        {apagar && (
+      {GRUPOS.map((grupo) => {
+        const tipos = TIPOS_DOCUMENTO.filter((t) => t.grupo === grupo).filter(
+          (t) => docs.some((d) => d.tipo === t.id) || !(t.id === "outro" || modo === "cliente")
+        );
+        if (tipos.length === 0) return null;
+        return (
+          <div key={grupo} className="space-y-2">
+            <h4 className="text-xs font-medium text-muted-foreground">{grupo}</h4>
+            <div className="divide-y overflow-hidden rounded-md border bg-card">
+              {tipos.map((t) => {
+                const doTipo = docs.filter((d) => d.tipo === t.id);
+                const atual = doTipo[0];
+                return (
+                  <div key={t.id} className="px-3 py-2.5">
+                    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                      <span className="min-w-0 text-sm font-medium sm:w-64 sm:shrink-0">{t.rotulo}</span>
+                      {atual ? (
+                        <>
+                          <span className="sm:w-48 sm:shrink-0">
+                            <Situacao validade={atual.validade} vence={t.vence} />
+                          </span>
                           <button
-                            className="btn btn-discreto"
-                            onClick={async () => {
-                              if (!confirm(`Apagar ${atual.nome_arquivo} do cofre?`)) return;
-                              await apagar(atual.id);
-                              setDocs((xs) => xs.filter((x) => x.id !== atual.id));
-                            }}
+                            className="inline-flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm text-muted-foreground hover:text-foreground"
+                            onClick={() => abrir(atual.id)}
+                            title={atual.nome_arquivo}
                           >
-                            Apagar
+                            <FileText className="size-3.5 shrink-0" />
+                            <span className="truncate">{atual.nome_arquivo}</span>
+                            {doTipo.length > 1 && (
+                              <span className="shrink-0 text-xs text-muted-foreground/70">+{doTipo.length - 1} anterior(es)</span>
+                            )}
                           </button>
-                        )}
-                      </span>
-                    )}
-                    {editando === atual.id && atualizar && (
+                          {modo === "operador" && atualizar && (
+                            <span className="flex shrink-0 gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                aria-label="Editar"
+                                onClick={() => setEditando(editando === atual.id ? null : atual.id)}
+                              >
+                                <Pencil />
+                                Editar
+                              </Button>
+                              {apagar && (
+                                <Button
+                                  size="icon-sm"
+                                  variant="ghost-destructive"
+                                  aria-label={`Apagar ${atual.nome_arquivo}`}
+                                  onClick={async () => {
+                                    if (
+                                      !(await confirmar({
+                                        titulo: `Apagar ${atual.nome_arquivo} do cofre?`,
+                                        confirmar: "Apagar",
+                                        destrutivo: true,
+                                      }))
+                                    )
+                                      return;
+                                    await apagar(atual.id);
+                                    setDocs((xs) => xs.filter((x) => x.id !== atual.id));
+                                  }}
+                                >
+                                  <Trash2 />
+                                </Button>
+                              )}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <StatusDot tom="perigo">Não enviado</StatusDot>
+                      )}
+                    </div>
+                    {atual && editando === atual.id && atualizar && (
                       <Edicao
                         doc={atual}
                         salvar={async (tipo, validade) => {
@@ -165,16 +207,14 @@ export default function Cofre({ documentos: iniciais, modo, pedirUpload, registr
                         }}
                       />
                     )}
-                    {doTipo.length > 1 && <span className="cofre-mais">+{doTipo.length - 1} anterior(es)</span>}
-                  </>
-                ) : (
-                  <span className="situacao situacao-falta">Não enviado</span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      {dialogo}
     </div>
   );
 }
@@ -183,11 +223,11 @@ function Situacao({ validade, vence }: { validade: string | null; vence: boolean
   const s = situacaoDocumento(validade);
   const data = validade ? validade.split("-").reverse().join("/") : null;
   if (s === "sem_validade") {
-    return <span className={`situacao ${vence ? "situacao-alerta" : "situacao-ok"}`}>{vence ? "Sem validade informada" : "Não vence"}</span>;
+    return <StatusDot tom={vence ? "alerta" : "sucesso"}>{vence ? "Sem validade informada" : "Não vence"}</StatusDot>;
   }
-  if (s === "vencido") return <span className="situacao situacao-falta">Vencido em {data}</span>;
-  if (s === "vence_logo") return <span className="situacao situacao-alerta">Vence em {data}</span>;
-  return <span className="situacao situacao-ok">Válido até {data}</span>;
+  if (s === "vencido") return <StatusDot tom="perigo">Vencido em {data}</StatusDot>;
+  if (s === "vence_logo") return <StatusDot tom="alerta">Vence em {data}</StatusDot>;
+  return <StatusDot tom="sucesso">Válido até {data}</StatusDot>;
 }
 
 function Edicao({ doc, salvar }: { doc: DocumentoResumo; salvar: (tipo: string, validade: string | null) => Promise<void> }) {
@@ -195,17 +235,17 @@ function Edicao({ doc, salvar }: { doc: DocumentoResumo; salvar: (tipo: string, 
   const [validade, setValidade] = useState(doc.validade ?? "");
   const [salvando, setSalvando] = useState(false);
   return (
-    <div className="cofre-edicao">
-      <select className="campo" value={tipo} onChange={(e) => setTipo(e.target.value)} aria-label="Tipo">
+    <div className="mt-2.5 flex flex-col gap-2 rounded-md bg-muted/50 p-2.5 sm:flex-row sm:items-center">
+      <NativeSelect className="sm:flex-1" value={tipo} onChange={(e) => setTipo(e.target.value)} aria-label="Tipo">
         {TIPOS_DOCUMENTO.map((t) => (
           <option key={t.id} value={t.id}>
             {t.rotulo}
           </option>
         ))}
-      </select>
-      <input className="campo" type="date" value={validade} onChange={(e) => setValidade(e.target.value)} aria-label="Validade" />
-      <button
-        className="btn btn-primario"
+      </NativeSelect>
+      <Input className="sm:w-44" type="date" value={validade} onChange={(e) => setValidade(e.target.value)} aria-label="Validade" />
+      <Button
+        size="sm"
         disabled={salvando}
         onClick={async () => {
           setSalvando(true);
@@ -214,8 +254,7 @@ function Edicao({ doc, salvar }: { doc: DocumentoResumo; salvar: (tipo: string, 
         }}
       >
         Salvar
-      </button>
+      </Button>
     </div>
   );
 }
-

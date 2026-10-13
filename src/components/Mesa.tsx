@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   BookOpen,
+  Gavel,
   ExternalLink,
   FileSearch,
   FileText,
@@ -26,6 +27,8 @@ import type { DocumentoResumo } from "@/lib/documentos";
 import { cn } from "@/lib/utils";
 import FichaEdital from "./FichaEdital";
 import RoteiroDisputa from "./RoteiroDisputa";
+import RegistroLances from "./RegistroLances";
+import { ETAPAS_COM_RESULTADO, type ResultadoDisputa } from "@/lib/resultado";
 import { ETAPAS_COM_GUIA } from "@/lib/guia";
 import CopiarLink from "./CopiarLink";
 import { Cabecalho } from "./Cabecalho";
@@ -111,9 +114,11 @@ interface Props {
   fichas: Record<string, FichaRow>;
   /** cliente → documentos do cofre */
   cofres: Record<string, DocumentoResumo[]>;
+  /** disputa → resultado da sessão já registrado */
+  resultados?: Record<string, ResultadoDisputa>;
 }
 
-export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaColeta, fichas, cofres }: Props) {
+export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaColeta, fichas, cofres, resultados = {} }: Props) {
   const [disputas, setDisputas] = useState(iniciais);
   // Depois de "Buscar agora" a página recarrega os dados do servidor; sem
   // isto a lista continuaria mostrando o estado de antes da busca.
@@ -336,6 +341,7 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
               atualizar={atualizar}
               fichaInicial={fichas[d.licitacao_id] ?? null}
               cofre={cofres[d.cliente_id] ?? []}
+              resultadoInicial={resultados[d.id] ?? null}
             />
           ))}
         </div>
@@ -347,6 +353,7 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
 function Item({
   fichaInicial,
   cofre,
+  resultadoInicial,
   d,
   agora,
   comOutro,
@@ -359,6 +366,7 @@ function Item({
   atualizar: (id: string, campos: Partial<DisputaCompleta>) => void;
   fichaInicial: FichaRow | null;
   cofre: DocumentoResumo[];
+  resultadoInicial: ResultadoDisputa | null;
 }) {
   const [pendente, iniciar] = useTransition();
   const [saida, setSaida] = useState<Saida | null>(null);
@@ -366,6 +374,8 @@ function Item({
   const [ficha, setFicha] = useState<FichaRow | null>(fichaInicial);
   const [abrirFicha, setAbrirFicha] = useState(false);
   const [abrirGuia, setAbrirGuia] = useState(false);
+  const [resultado, setResultado] = useState<ResultadoDisputa | null>(resultadoInicial);
+  const [abrirResultado, setAbrirResultado] = useState(false);
   const [lendo, setLendo] = useState(false);
   const [notas, setNotas] = useState(d.notas_operador ?? "");
   const [confirmar, dialogo] = useConfirmar();
@@ -418,6 +428,9 @@ function Item({
               <StatusDot tom={TOM_STATUS[d.status]} pulsar={d.status === "em_disputa"}>
                 {ROTULO_STATUS[d.status]}
               </StatusDot>
+            )}
+            {!resultado && ["ganhou", "perdeu"].includes(d.status) && (
+              <StatusDot tom="alerta">Lances não registrados</StatusDot>
             )}
             {l.revisoes > 0 && (
               <StatusDot tom="alerta">Edital retificado {l.revisoes === 1 ? "uma vez" : `${l.revisoes} vezes`}</StatusDot>
@@ -480,6 +493,7 @@ function Item({
         )}
 
         {abrirGuia && <RoteiroDisputa d={d} ficha={ficha} />}
+        {abrirResultado && <RegistroLances d={d} inicial={resultado} salvo={setResultado} />}
         {abrirAnalise && d.analise_ia && <Analise a={d.analise_ia} />}
         {abrirFicha && ficha && (
           <FichaEdital
@@ -582,6 +596,18 @@ function Item({
                   : "Ficha do edital"
                 : "Ler edital"}
           </Button>
+
+          {(ETAPAS_COM_RESULTADO as readonly string[]).includes(d.status) && (
+            <Button
+              size="sm"
+              variant={!resultado && ["ganhou", "perdeu"].includes(d.status) ? "secondary" : "outline"}
+              aria-expanded={abrirResultado}
+              onClick={() => setAbrirResultado((x) => !x)}
+            >
+              <Gavel />
+              {abrirResultado ? "Fechar lances" : resultado ? "Lances registrados" : "Registrar lances"}
+            </Button>
+          )}
 
           {ETAPAS_COM_GUIA.includes(d.status) && (
             <Button size="sm" variant="outline" aria-expanded={abrirGuia} onClick={() => setAbrirGuia((x) => !x)}>

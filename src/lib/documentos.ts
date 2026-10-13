@@ -69,7 +69,11 @@ export interface ItemChecklist {
   rotulo: string;
   /** o que o edital diz sobre este documento */
   detalhe: string;
-  situacao: "ok" | "vence_logo" | "vencido" | "falta";
+  /**
+   * ok: vale na sessão com folga · vence_logo: vale na sessão, mas vence logo depois
+   * vence_antes: vale hoje, mas vence antes da sessão · vencido: já venceu
+   */
+  situacao: "ok" | "vence_logo" | "vence_antes" | "vencido" | "falta";
   /** validade do melhor documento do cofre para este tipo */
   validade: string | null;
 }
@@ -92,12 +96,20 @@ export function checklistHabilitacao(
       return { tipo: e.tipo, rotulo: rotuloTipo(e.tipo), detalhe: e.detalhe, situacao: "falta", validade: null };
     }
     const melhor = candidatos.sort((a, b) => (b.validade ?? "9999") .localeCompare(a.validade ?? "9999"))[0];
-    const s = situacaoDocumento(melhor.validade, referencia);
+    const hoje = situacaoDocumento(melhor.validade);
+    const naSessao = situacaoDocumento(melhor.validade, referencia);
     return {
       tipo: e.tipo,
       rotulo: rotuloTipo(e.tipo),
       detalhe: e.detalhe,
-      situacao: s === "vencido" ? "vencido" : s === "vence_logo" ? "vence_logo" : "ok",
+      situacao:
+        hoje === "vencido"
+          ? "vencido"
+          : naSessao === "vencido"
+            ? "vence_antes"
+            : naSessao === "vence_logo"
+              ? "vence_logo"
+              : "ok",
       validade: melhor.validade,
     };
   });

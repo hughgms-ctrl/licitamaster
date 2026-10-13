@@ -7,6 +7,7 @@ import { analisarLicitacao, lerEdital } from "@/lib/ai";
 import { reunirPDFs } from "@/lib/edital";
 import { lerConfigIA } from "@/lib/config-ia";
 import type { FichaRow } from "@/lib/ficha";
+import { FASES, type GuiaMarcado } from "@/lib/guia";
 import { convidarCliente } from "@/lib/notify";
 import { moverDisputa, registrarEvento, TRANSICOES_OPERADOR, urlPortal } from "@/lib/disputas";
 
@@ -137,6 +138,22 @@ export async function salvarNotas(disputaId: string, notas: string): Promise<Sai
   await exigirOperador();
   const { error } = await db().from("disputas").update({ notas_operador: notas }).eq("id", disputaId);
   return error ? { ok: false, mensagem: error.message } : { ok: true, mensagem: "Notas salvas." };
+}
+
+/** Marca ou desmarca um passo do guia da disputa. */
+export async function marcarPassoGuia(disputaId: string, chave: string, feito: boolean): Promise<Saida> {
+  await exigirOperador();
+  const [fase, passo] = chave.split(".");
+  if (!FASES.find((f) => f.id === fase)?.passos.some((p) => p.id === passo)) {
+    return { ok: false, mensagem: "Passo desconhecido." };
+  }
+  const { data, error } = await db().from("disputas").select("guia").eq("id", disputaId).maybeSingle();
+  if (error || !data) return { ok: false, mensagem: error?.message ?? "Disputa não encontrada." };
+  const guia = { ...((data.guia as GuiaMarcado) ?? {}) };
+  if (feito) guia[chave] = new Date().toISOString();
+  else delete guia[chave];
+  const { error: e2 } = await db().from("disputas").update({ guia }).eq("id", disputaId);
+  return e2 ? { ok: false, mensagem: e2.message } : { ok: true, mensagem: "Salvo." };
 }
 
 /**

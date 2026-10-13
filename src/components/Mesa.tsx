@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  BookOpen,
   ExternalLink,
   FileSearch,
   FileText,
@@ -24,6 +25,8 @@ import type { FichaRow } from "@/lib/ficha";
 import type { DocumentoResumo } from "@/lib/documentos";
 import { cn } from "@/lib/utils";
 import FichaEdital from "./FichaEdital";
+import RoteiroDisputa from "./RoteiroDisputa";
+import { ETAPAS_COM_GUIA } from "@/lib/guia";
 import CopiarLink from "./CopiarLink";
 import { Cabecalho } from "./Cabecalho";
 import { TOM_STATUS } from "./tons";
@@ -362,6 +365,7 @@ function Item({
   const [abrirAnalise, setAbrirAnalise] = useState(false);
   const [ficha, setFicha] = useState<FichaRow | null>(fichaInicial);
   const [abrirFicha, setAbrirFicha] = useState(false);
+  const [abrirGuia, setAbrirGuia] = useState(false);
   const [lendo, setLendo] = useState(false);
   const [notas, setNotas] = useState(d.notas_operador ?? "");
   const [confirmar, dialogo] = useConfirmar();
@@ -475,6 +479,7 @@ function Item({
           </div>
         )}
 
+        {abrirGuia && <RoteiroDisputa d={d} ficha={ficha} />}
         {abrirAnalise && d.analise_ia && <Analise a={d.analise_ia} />}
         {abrirFicha && ficha && (
           <FichaEdital
@@ -577,6 +582,13 @@ function Item({
                   : "Ficha do edital"
                 : "Ler edital"}
           </Button>
+
+          {ETAPAS_COM_GUIA.includes(d.status) && (
+            <Button size="sm" variant="outline" aria-expanded={abrirGuia} onClick={() => setAbrirGuia((x) => !x)}>
+              <BookOpen />
+              {abrirGuia ? "Fechar roteiro" : "Roteiro da disputa"}
+            </Button>
+          )}
 
           {(l.link_pncp || l.link_sistema_origem) && (
             <Button size="sm" variant="ghost" asChild>

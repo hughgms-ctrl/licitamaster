@@ -6,6 +6,9 @@ import { moverDisputa } from "@/lib/disputas";
 import { enviarWhatsApp } from "@/lib/notify";
 import { formatarValor } from "@/lib/formato";
 import { DECLARACAO_APROVACAO } from "@/lib/etapas";
+import * as cofre from "@/lib/cofre";
+import { registrarEvento } from "@/lib/disputas";
+import type { SaidaCofre } from "@/components/Cofre";
 
 /**
  * Ações do portal do cliente. A autenticação é o token na URL — então TODA
@@ -22,11 +25,11 @@ const TOKEN_VALIDO = /^[a-f0-9]{48}$/;
 
 async function clientePorToken(
   token: string
-): Promise<Pick<ClienteRow, "id" | "razao_social" | "nome_fantasia"> | null> {
+): Promise<Pick<ClienteRow, "id" | "razao_social" | "nome_fantasia" | "cnpj"> | null> {
   if (!TOKEN_VALIDO.test(token)) return null;
   const { data } = await db()
     .from("clientes")
-    .select("id, razao_social, nome_fantasia")
+    .select("id, razao_social, nome_fantasia, cnpj")
     .eq("token_portal", token)
     .eq("ativo", true)
     .maybeSingle();
@@ -106,4 +109,45 @@ export async function responder(
         ? "Aprovado! A partir daqui é com a gente: montamos a proposta e avisamos você a cada etapa."
         : "Tudo certo, não vamos participar desta.",
   };
+}
+
+// ── Cofre de documentos pelo portal ──────────────────────────────
+// O cliente envia e consulta os próprios documentos. Apagar fica só com o
+// operador: um clique errado do cliente não pode sumir com uma certidão
+// que está numa proposta em andamento.
+
+export async function ptPedirUpload(token: string, nome: string, mime: string, bytes: number) {
+  const cliente = await clientePorToken(token);
+  if (!cliente) return { erro: "Link inválido ou expirado." };
+  return cofre.pedirUpload(cliente.id, nome, mime, bytes);
+}
+
+export async function ptRegistrar(token: string, path: string, nomeArquivo: string, tipo?: string): Promise<SaidaCofre> {
+  const cliente = await clientePorToken(token);
+  if (!cliente) return { ok: false, aviso: "Link inválido ou expirado." };
+  try {
+    const r = await cofre.registrar({
+      clienteId: cliente.id,
+      cnpjCliente: cliente.cnpj,
+      path,
+      nomeArquivo,
+      enviadoPor: "cliente",
+      tipo,
+    });
+    await registrarEvento({ cliente_id: cliente.id, ator: "cliente", tipo: "documento_enviado", dados: { tipo: r.documento.tipo } });
+    const operador = process.env.ALERTA_WHATSAPP_NUMERO;
+    if (operador) {
+      await enviarWhatsApp(operador, `📎 *${cliente.nome_fantasia || cliente.razao_social}* enviou um documento pelo portal: ${nomeArquivo}`);
+    }
+    revalidatePath(`/c/${token}`);
+    return { ok: true, documento: r.documento, aviso: r.aviso };
+  } catch (e) {
+    return { ok: false, aviso: (e as Error).message };
+  }
+}
+
+export async function ptLink(token: string, documentoId: string) {
+  const cliente = await clientePorToken(token);
+  if (!cliente) throw new Error("Link inválido ou expirado.");
+  return cofre.linkArquivo(cliente.id, documentoId);
 }

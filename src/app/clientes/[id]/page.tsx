@@ -8,6 +8,9 @@ import FormCliente from "@/components/FormCliente";
 import Filtros from "@/components/Filtros";
 import CopiarLink from "@/components/CopiarLink";
 import { regenerarLink, salvarCliente } from "../acoes";
+import Cofre from "@/components/Cofre";
+import { listar as listarCofre } from "@/lib/cofre";
+import { opApagar, opAtualizar, opLink, opPedirUpload, opRegistrar } from "../acoes-cofre";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +63,20 @@ export default async function Cliente({ params }: { params: Promise<{ id: string
               </form>
             </div>
           </div>
+        </section>
+      </main>
+      <h2 className="secao-titulo secao-larga">Cofre de documentos</h2>
+      <main className="pagina pagina-uma">
+        <section className="editor">
+          <Cofre
+            documentos={await listarCofre(id)}
+            modo="operador"
+            pedirUpload={opPedirUpload.bind(null, id)}
+            registrar={opRegistrar.bind(null, id)}
+            link={opLink.bind(null, id)}
+            atualizar={opAtualizar.bind(null, id)}
+            apagar={opApagar.bind(null, id)}
+          />
         </section>
       </main>
       <h2 className="secao-titulo secao-larga">Perfis de busca</h2>

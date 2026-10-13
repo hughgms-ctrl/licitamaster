@@ -3,9 +3,14 @@ import { db, SELECT_DISPUTA_COMPLETA, type DisputaCompleta } from "@/lib/db";
 import { STATUS_EXCLUSIVOS } from "@/lib/etapas";
 import Topo from "@/components/Topo";
 import Mesa from "@/components/Mesa";
+import type { FichaRow } from "@/lib/ficha";
+import type { DocumentoResumo } from "@/lib/documentos";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+// A leitura de edital roda como server action desta página e pode levar
+// minutos (download do PNCP + IA lendo dezenas de páginas).
+export const maxDuration = 300;
 
 /** Etapas que aparecem na mesa sem limite de data: o trabalho em andamento. */
 const EM_ANDAMENTO = [
@@ -24,6 +29,8 @@ export default async function Home() {
   let encerradas: DisputaCompleta[] = [];
   let clientes: { id: string; nome: string }[] = [];
   let ultimaColeta: { finalizado_em: string | null; erro: string | null } | null = null;
+  const fichas: Record<string, FichaRow> = {};
+  const cofres: Record<string, DocumentoResumo[]> = {};
   let falha: string | null = null;
 
   try {
@@ -73,6 +80,20 @@ export default async function Home() {
     encerradas = (enc.data ?? []) as unknown as DisputaCompleta[];
     clientes = (cls.data ?? []).map((c) => ({ id: c.id, nome: c.nome_fantasia || c.razao_social }));
     ultimaColeta = runs.data?.[0] ?? null;
+
+    // Fichas e cofres são pequenos (uma ficha por edital lido, dezenas de
+    // documentos por cliente): carregar tudo é mais simples que filtrar.
+    const [fs, ds] = await Promise.all([
+      supabase.from("fichas_edital").select("*").order("gerado_em", { ascending: false }).limit(1000),
+      supabase
+        .from("documentos_cliente")
+        .select("id, cliente_id, tipo, descricao, nome_arquivo, validade, emitido_em, enviado_por, created_at")
+        .order("created_at", { ascending: false }),
+    ]);
+    for (const f of (fs.data ?? []) as FichaRow[]) fichas[f.licitacao_id] = f;
+    for (const doc of (ds.data ?? []) as (DocumentoResumo & { cliente_id: string })[]) {
+      (cofres[doc.cliente_id] ??= []).push(doc);
+    }
   } catch (e) {
     falha = (e as Error).message;
   }
@@ -132,6 +153,8 @@ export default async function Home() {
         clientes={clientes}
         exclusivas={exclusivas}
         ultimaColeta={ultimaColeta}
+        fichas={fichas}
+        cofres={cofres}
       />
     </>
   );

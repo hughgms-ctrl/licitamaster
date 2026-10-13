@@ -36,7 +36,9 @@ export default function Portal({
   contato,
   cartoes: iniciais,
   declaracao,
+  cofre,
 }: {
+  cofre?: React.ReactNode;
   token: string;
   empresa: string;
   contato: string | null;
@@ -101,6 +103,17 @@ export default function Portal({
           {resultados.map((c) => (
             <Resumo key={c.id} c={c} />
           ))}
+        </section>
+      )}
+
+      {cofre && (
+        <section className="portal-secao">
+          <h2 className="portal-titulo">Documentos da empresa</h2>
+          <p className="dica">
+            Certidões e documentos que usamos para inscrever a sua empresa. Mantenha em dia: certidão
+            vencida tira a empresa da disputa.
+          </p>
+          <div className="portal-cartao">{cofre}</div>
         </section>
       )}
     </div>

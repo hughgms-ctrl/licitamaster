@@ -3,6 +3,8 @@ import type { AnaliseIA, ClienteRow, LicitacaoRow } from "./db";
 import type { AmostraObjeto } from "./amostra";
 import { normalizar, type TermoPositivo } from "./scoring";
 import { lerConfigIA } from "./config-ia";
+import { IDS_TIPO, TIPOS_DOCUMENTO } from "./documentos";
+import type { FichaEdital } from "./ficha";
 
 /** Um PDF para a IA ler junto com o prompt (edital, termo de referência…). */
 export interface DocumentoPDF {
@@ -327,5 +329,157 @@ Seja cético. Objeto genérico demais para saber o que é? Isso é "talvez", nã
     riscos: parsed.riscos ?? [],
     perguntas: parsed.perguntas ?? [],
     gerado_em: new Date().toISOString(),
+  };
+}
+
+/**
+ * Lê o edital inteiro (PDFs do PNCP) e devolve a ficha da licitação.
+ *
+ * A ficha é do EDITAL, não do cliente: serve para qualquer cliente que
+ * dispute. A IA é obrigada a classificar cada documento exigido com os
+ * códigos do cofre (TIPOS_DOCUMENTO) — é isso que permite cruzar a exigência
+ * com o que o cliente já tem, sem uma segunda leitura.
+ */
+export async function lerEdital(lic: LicitacaoRow, pdfs: DocumentoPDF[]): Promise<FichaEdital> {
+  const tipos = TIPOS_DOCUMENTO.map((t) => `- ${t.id}: ${t.rotulo}`).join("\n");
+
+  const prompt = `Você é analista sênior de licitações públicas no Brasil (Lei 14.133/2021 e LC 123/2006).
+Os PDFs acima são os documentos desta contratação publicados no PNCP (edital, termo de referência, anexos).
+Leia tudo e monte a ficha que um operador usa para decidir e preparar a participação.
+
+DADOS DO PNCP:
+- Modalidade: ${lic.modalidade_nome ?? "—"}${lic.srp ? " (registro de preços)" : ""}
+- Objeto: ${lic.objeto ?? "—"}
+- Órgão: ${lic.orgao_razao_social ?? "—"} — ${lic.municipio ?? "—"}/${lic.uf ?? "—"}
+- Valor estimado: ${lic.valor_estimado ?? "não informado"}
+- Encerramento das propostas: ${lic.data_encerramento_proposta ?? "—"}
+
+CÓDIGOS DE DOCUMENTO (use EXATAMENTE estes em documentos_exigidos.tipo; se não houver código adequado, use "outro" e explique no detalhe):
+${tipos}
+
+Regras:
+1. Use só o que está nos documentos. Se algo não aparece, use null (ou lista vazia). Nunca invente.
+2. Cite a página quando souber, no fim do texto, assim: "(p. 12)".
+3. Em documentos_exigidos, liste cada documento de habilitação pedido, um por item. No detalhe,
+   o que o edital exige daquele documento (ex: "emitida há no máximo 90 dias", "com firma reconhecida").
+4. Em exigencias_tecnicas, os atestados e qualificações técnicas COM os quantitativos mínimos exigidos.
+5. Em clausulas_restritivas, só cláusulas que provavelmente restringem a competição sem justificativa
+   (marca sem "ou similar", exigência técnica desproporcional, prazo inexequível, visita técnica
+   obrigatória sem alternativa, índices econômicos fora do usual etc.) — base para impugnação.
+6. Em riscos, o que pode fazer o cliente perder dinheiro ou ser penalizado depois de ganhar.
+7. Datas e horas no formato "dd/mm/aaaa hh:mm" quando houver hora.
+8. resumo: 3 a 4 frases técnicas. resumo_cliente: 2 a 3 frases simples para um dono de pequena
+   empresa, sem siglas nem juridiquês: o que teria de entregar, onde, por quanto tempo.
+
+Responda SOMENTE com JSON válido, sem markdown, neste formato:
+{
+  "resumo": "...",
+  "resumo_cliente": "...",
+  "itens": [{"descricao": "...", "quantidade": "12 meses" | null, "valor_estimado": 1234.56 | null}],
+  "sessao": {"data_hora": "...", "plataforma": "Compras.gov.br | BLL | Portal de Compras Públicas | ...", "link": "...", "modo_disputa": "aberto | aberto e fechado | ...", "criterio_julgamento": "menor preço por item | ..."},
+  "exclusiva_me_epp": "sim" | "nao" | "parcial" | "nao_informado",
+  "prazos": {"impugnacao": "...", "esclarecimentos": "...", "entrega_execucao": "...", "vigencia": "...", "pagamento": "...", "validade_proposta": "..."},
+  "documentos_exigidos": [{"tipo": "cnd_federal", "detalhe": "..."}],
+  "exigencias_tecnicas": ["..."],
+  "qualificacao_economica": ["..."],
+  "visita_tecnica": "..." | null,
+  "amostra": "..." | null,
+  "garantia": "..." | null,
+  "riscos": ["..."],
+  "clausulas_restritivas": [{"clausula": "...", "por_que": "...", "referencia": "item 8.3 (p. 14)" | null}],
+  "perguntas_esclarecimento": ["pergunta que vale mandar ao pregoeiro"],
+  "penalidades": ["..."]
+}
+
+Liste no máximo 30 itens em "itens" (os de maior valor, se houver mais).`;
+
+  const texto = await chamarIA({
+    prompt,
+    pdfs,
+    maxTokens: 32_000,
+    esforco: "medium",
+    timeoutMs: 280_000,
+  });
+  const f = parseJson<FichaEdital>(texto);
+
+  const validos = new Set<string>(IDS_TIPO);
+  // a IA às vezes devolve null em lista; normalizar evita quebrar a tela
+  return {
+    resumo: f.resumo ?? "",
+    resumo_cliente: f.resumo_cliente ?? f.resumo ?? "",
+    itens: Array.isArray(f.itens) ? f.itens.slice(0, 30) : [],
+    sessao: {
+      data_hora: f.sessao?.data_hora ?? null,
+      plataforma: f.sessao?.plataforma ?? null,
+      link: f.sessao?.link ?? null,
+      modo_disputa: f.sessao?.modo_disputa ?? null,
+      criterio_julgamento: f.sessao?.criterio_julgamento ?? null,
+    },
+    exclusiva_me_epp: ["sim", "nao", "parcial"].includes(f.exclusiva_me_epp) ? f.exclusiva_me_epp : "nao_informado",
+    prazos: {
+      impugnacao: f.prazos?.impugnacao ?? null,
+      esclarecimentos: f.prazos?.esclarecimentos ?? null,
+      entrega_execucao: f.prazos?.entrega_execucao ?? null,
+      vigencia: f.prazos?.vigencia ?? null,
+      pagamento: f.prazos?.pagamento ?? null,
+      validade_proposta: f.prazos?.validade_proposta ?? null,
+    },
+    documentos_exigidos: (f.documentos_exigidos ?? []).map((d) => ({
+      tipo: validos.has(d.tipo) ? d.tipo : "outro",
+      detalhe: String(d.detalhe ?? ""),
+    })),
+    exigencias_tecnicas: f.exigencias_tecnicas ?? [],
+    qualificacao_economica: f.qualificacao_economica ?? [],
+    visita_tecnica: f.visita_tecnica ?? null,
+    amostra: f.amostra ?? null,
+    garantia: f.garantia ?? null,
+    riscos: f.riscos ?? [],
+    clausulas_restritivas: f.clausulas_restritivas ?? [],
+    perguntas_esclarecimento: f.perguntas_esclarecimento ?? [],
+    penalidades: f.penalidades ?? [],
+  };
+}
+
+export interface LeituraDocumento {
+  tipo: string;
+  emitido_em: string | null;
+  validade: string | null;
+  cnpj: string | null;
+  confere_cnpj: boolean | null;
+  observacao: string;
+}
+
+/**
+ * Lê um documento enviado ao cofre (certidão, contrato social…) e diz o que
+ * ele é e até quando vale. Poupa digitação e pega o erro comum de subir a
+ * certidão de outra empresa: o CNPJ do documento é conferido com o do cliente.
+ */
+export async function lerDocumento(pdf: DocumentoPDF, cnpjCliente: string): Promise<LeituraDocumento> {
+  const tipos = TIPOS_DOCUMENTO.map((t) => `- ${t.id}: ${t.rotulo}`).join("\n");
+  const prompt = `O PDF acima é um documento de habilitação de uma empresa para licitação.
+Identifique o tipo, a data de emissão e a validade.
+
+Tipos possíveis (use exatamente um destes códigos):
+${tipos}
+
+Responda SOMENTE com JSON válido, sem markdown:
+{"tipo": "codigo", "emitido_em": "aaaa-mm-dd" | null, "validade": "aaaa-mm-dd" | null,
+ "cnpj": "somente dígitos do CNPJ da empresa a que o documento se refere" | null,
+ "observacao": "1 frase: algo que exija atenção (ex: certidão POSITIVA, documento ilegível), ou vazio"}
+
+Validade: use a data escrita no documento ("válida até"). Se o documento não traz validade e é do tipo
+que não vence (contrato social, cartão CNPJ, atestado), use null.`;
+
+  const texto = await chamarIA({ prompt, pdfs: [pdf], maxTokens: 4000, esforco: "low", timeoutMs: 90_000 });
+  const r = parseJson<Omit<LeituraDocumento, "confere_cnpj">>(texto);
+  const cnpj = r.cnpj ? String(r.cnpj).replace(/\D/g, "") : null;
+  const data = (s: string | null) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);
+  return {
+    tipo: (IDS_TIPO as string[]).includes(r.tipo) ? r.tipo : "outro",
+    emitido_em: data(r.emitido_em),
+    validade: data(r.validade),
+    cnpj,
+    confere_cnpj: cnpj ? cnpj === cnpjCliente.replace(/\D/g, "") : null,
+    observacao: r.observacao ?? "",
   };
 }

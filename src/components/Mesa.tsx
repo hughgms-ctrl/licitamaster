@@ -4,7 +4,10 @@ import { useMemo, useState, useTransition } from "react";
 import type { AnaliseIA, DisputaCompleta, StatusDisputa } from "@/lib/db";
 import { ROTULO_STATUS, TRANSICOES_OPERADOR } from "@/lib/etapas";
 import { formatarData, formatarValor, limparObjeto } from "@/lib/formato";
-import { analisar, enviarAoCliente, mudarStatus, salvarNotas, type Saida } from "@/app/acoes";
+import { analisar, enviarAoCliente, lerEditalAcao, mudarStatus, salvarNotas, type Saida } from "@/app/acoes";
+import type { FichaRow } from "@/lib/ficha";
+import type { DocumentoResumo } from "@/lib/documentos";
+import FichaEdital from "./FichaEdital";
 import CopiarLink from "./CopiarLink";
 
 /**
@@ -52,9 +55,13 @@ interface Props {
   /** licitação → nome do cliente que está com ela */
   exclusivas: Record<string, string>;
   ultimaColeta: { finalizado_em: string | null; erro: string | null } | null;
+  /** licitação → ficha do edital já lida */
+  fichas: Record<string, FichaRow>;
+  /** cliente → documentos do cofre */
+  cofres: Record<string, DocumentoResumo[]>;
 }
 
-export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaColeta }: Props) {
+export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaColeta, fichas, cofres }: Props) {
   const [disputas, setDisputas] = useState(iniciais);
   const [aba, setAba] = useState("triagem");
   const [cliente, setCliente] = useState<string>("todos");
@@ -202,6 +209,8 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
                   }
                   atualizar={atualizar}
                   avisar={setAviso}
+                  fichaInicial={fichas[d.licitacao_id] ?? null}
+                  cofre={cofres[d.cliente_id] ?? []}
                 />
               ))}
             </div>
@@ -227,6 +236,8 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
 
 function Item({
   avisar,
+  fichaInicial,
+  cofre,
   d,
   agora,
   comOutro,
@@ -238,10 +249,15 @@ function Item({
   comOutro: string | null;
   atualizar: (id: string, campos: Partial<DisputaCompleta>) => void;
   avisar: (a: Saida & { titulo: string }) => void;
+  fichaInicial: FichaRow | null;
+  cofre: DocumentoResumo[];
 }) {
   const [pendente, iniciar] = useTransition();
   const [saida, setSaida] = useState<Saida | null>(null);
   const [abrirAnalise, setAbrirAnalise] = useState(false);
+  const [ficha, setFicha] = useState<FichaRow | null>(fichaInicial);
+  const [abrirFicha, setAbrirFicha] = useState(false);
+  const [lendo, setLendo] = useState(false);
   const [notas, setNotas] = useState(d.notas_operador ?? "");
   const l = d.licitacao;
   const nomeCliente = d.cliente.nome_fantasia || d.cliente.razao_social;
@@ -344,6 +360,19 @@ function Item({
         )}
 
         {abrirAnalise && d.analise_ia && <Analise a={d.analise_ia} />}
+        {abrirFicha && ficha && (
+          <FichaEdital
+            linha={ficha}
+            cofre={cofre}
+            encerramento={d.licitacao.data_encerramento_proposta}
+            nomeCliente={nomeCliente}
+            editalMudouDepois={
+              !!ficha.versao_pncp &&
+              !!d.licitacao.data_atualizacao_pncp &&
+              new Date(d.licitacao.data_atualizacao_pncp) > new Date(ficha.versao_pncp)
+            }
+          />
+        )}
 
         <div className="acoes">
           {podeEnviar && (
@@ -431,6 +460,37 @@ function Item({
                 : (ACAO_PARA[para] ?? ROTULO_STATUS[para])}
             </button>
           ))}
+
+          <button
+            className="btn"
+            disabled={lendo}
+            aria-expanded={ficha ? abrirFicha : undefined}
+            onClick={async () => {
+              if (ficha) return setAbrirFicha((x) => !x);
+              setLendo(true);
+              setSaida(null);
+              try {
+                const s = await lerEditalAcao(d.id);
+                setSaida({ ok: s.ok, mensagem: s.mensagem });
+                if (s.ficha) {
+                  setFicha(s.ficha);
+                  setAbrirFicha(true);
+                }
+              } catch (e) {
+                setSaida({ ok: false, mensagem: (e as Error).message });
+              } finally {
+                setLendo(false);
+              }
+            }}
+          >
+            {lendo
+              ? "Lendo o edital… (1 a 3 min)"
+              : ficha
+                ? abrirFicha
+                  ? "Fechar ficha"
+                  : "Ficha do edital"
+                : "Ler edital"}
+          </button>
 
           {(l.link_pncp || l.link_sistema_origem) && (
             <a

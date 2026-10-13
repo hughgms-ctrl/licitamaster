@@ -4,6 +4,9 @@ import { db, type ClienteRow, type DisputaRow, type LicitacaoRow } from "@/lib/d
 import Portal, { type CartaoPortal } from "@/components/Portal";
 import { DECLARACAO_APROVACAO } from "@/lib/etapas";
 import { limparObjeto } from "@/lib/formato";
+import { listar as listarCofre } from "@/lib/cofre";
+import Cofre from "@/components/Cofre";
+import { ptLink, ptPedirUpload, ptRegistrar } from "./acoes";
 
 export const dynamic = "force-dynamic";
 
@@ -47,13 +50,23 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
     .gte("updated_at", noventaDias)
     .order("updated_at", { ascending: false });
 
+  // Resumo em linguagem simples: o da análise rápida ou, se o edital já foi
+  // lido, o da ficha (mais completo).
+  const idsLicitacao = (data ?? []).map((d) => d.licitacao_id as string);
+  const { data: fichasRaw } = idsLicitacao.length
+    ? await supabase.from("fichas_edital").select("licitacao_id, ficha").in("licitacao_id", idsLicitacao)
+    : { data: [] };
+  const resumoFicha = new Map(
+    (fichasRaw ?? []).map((f) => [f.licitacao_id as string, (f.ficha as { resumo_cliente?: string }).resumo_cliente])
+  );
+
   // Só o que o cliente precisa ver. Score, termos, notas internas e análise
   // técnica ficam do lado de cá.
   const cartoes: CartaoPortal[] = ((data ?? []) as (DisputaRow & { licitacao: LicitacaoRow })[]).map(
     (d) => ({
       id: d.id,
       status: d.status,
-      resumo: d.analise_ia?.resumo_cliente || null,
+      resumo: resumoFicha.get(d.licitacao_id) || d.analise_ia?.resumo_cliente || null,
       objeto: limparObjeto(d.licitacao.objeto),
       orgao: d.licitacao.orgao_razao_social,
       local: [d.licitacao.municipio, d.licitacao.uf].filter(Boolean).join("/"),
@@ -72,6 +85,15 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
       contato={cliente.contato_nome}
       cartoes={cartoes}
       declaracao={DECLARACAO_APROVACAO}
+      cofre={
+        <Cofre
+          documentos={await listarCofre(cliente.id)}
+          modo="cliente"
+          pedirUpload={ptPedirUpload.bind(null, token)}
+          registrar={ptRegistrar.bind(null, token)}
+          link={ptLink.bind(null, token)}
+        />
+      }
     />
   );
 }

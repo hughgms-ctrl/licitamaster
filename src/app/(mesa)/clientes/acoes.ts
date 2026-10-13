@@ -6,6 +6,9 @@ import { redirect } from "next/navigation";
 import { db, type Porte } from "@/lib/db";
 import { exigirOperador } from "@/lib/auth";
 import { registrarEvento } from "@/lib/disputas";
+import { ITENS_MANUAIS, type Preparo, type StatusPreparo } from "@/lib/preparo";
+
+const STATUS_PREPARO: StatusPreparo[] = ["pendente", "cliente_informou", "feito", "nao_se_aplica"];
 
 const PORTES: Porte[] = ["MEI", "ME", "EPP", "demais"];
 const so = (v: FormDataEntryValue | null) => String(v ?? "").trim();
@@ -73,4 +76,25 @@ export async function regenerarLink(id: string): Promise<void> {
   if (error) throw new Error(error.message);
   await registrarEvento({ cliente_id: id, ator: "operador", tipo: "link_portal_regenerado" });
   revalidatePath(`/clientes/${id}`);
+}
+
+/** Muda a situação de um item da preparação do cliente. */
+export async function marcarPreparo(
+  id: string,
+  item: string,
+  status: StatusPreparo,
+  nota: string | null
+): Promise<void> {
+  const eu = await exigirOperador();
+  if (!ITENS_MANUAIS.some((i) => i.id === item)) throw new Error("Item desconhecido.");
+  if (!STATUS_PREPARO.includes(status)) throw new Error("Situação inválida.");
+  const { data, error } = await db().from("clientes").select("preparo").eq("id", id).single();
+  if (error) throw new Error(error.message);
+  const preparo = { ...((data.preparo as Preparo) ?? {}) };
+  preparo[item] = { status, nota: nota?.trim() || null, em: new Date().toISOString(), por: eu.email };
+  const { error: e2 } = await db().from("clientes").update({ preparo }).eq("id", id);
+  if (e2) throw new Error(e2.message);
+  await registrarEvento({ cliente_id: id, ator: "operador", tipo: "preparo_marcado", dados: { item, status } });
+  revalidatePath(`/clientes/${id}`);
+  revalidatePath("/clientes");
 }

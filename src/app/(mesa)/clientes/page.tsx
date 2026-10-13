@@ -2,6 +2,8 @@ import Link from "next/link";
 import { exigirOperadorPagina } from "@/lib/auth";
 import { db, type ClienteRow } from "@/lib/db";
 import { formatarCnpj } from "@/lib/formato";
+import type { DocumentoResumo } from "@/lib/documentos";
+import { progressoPreparo } from "@/lib/preparo";
 import { ChevronRight, Building2 } from "lucide-react";
 import { Cabecalho } from "@/components/Cabecalho";
 import { Aviso } from "@/components/ui/aviso";
@@ -16,10 +18,18 @@ export const dynamic = "force-dynamic";
 export default async function Clientes() {
   await exigirOperadorPagina();
   const supabase = db();
-  const [{ data: clientes, error }, { data: disputas }] = await Promise.all([
+  const [{ data: clientes, error }, { data: disputas }, { data: docs }] = await Promise.all([
     supabase.from("clientes").select("*").order("razao_social"),
     supabase.from("disputas").select("cliente_id, status"),
+    supabase
+      .from("documentos_cliente")
+      .select("id, cliente_id, tipo, descricao, nome_arquivo, validade, emitido_em, enviado_por, created_at")
+      .order("created_at", { ascending: false }),
   ]);
+  const docsPor = new Map<string, DocumentoResumo[]>();
+  for (const d of (docs ?? []) as (DocumentoResumo & { cliente_id: string })[]) {
+    docsPor.set(d.cliente_id, [...(docsPor.get(d.cliente_id) ?? []), d]);
+  }
 
   // por cliente: quantas sugestões na mesa, quantas em andamento, quantas ganhas
   const placar = new Map<string, { sugeridas: number; andamento: number; ganhas: number }>();
@@ -67,6 +77,7 @@ export default async function Clientes() {
             <div className="divide-y overflow-hidden rounded-lg border bg-card">
               {lista.map((c) => {
                 const p = placar.get(c.id) ?? { sugeridas: 0, andamento: 0, ganhas: 0 };
+                const prep = progressoPreparo(c.preparo, docsPor.get(c.id) ?? []);
                 return (
                   <Link
                     key={c.id}
@@ -80,6 +91,11 @@ export default async function Clientes() {
                       <span className="flex items-center gap-2">
                         <span className="truncate text-sm font-medium">{c.nome_fantasia || c.razao_social}</span>
                         {!c.ativo && <StatusDot tom="neutro">Desligado</StatusDot>}
+                        {c.ativo && !prep.pronto && (
+                          <StatusDot tom={prep.aConferir ? "alerta" : "perigo"}>
+                            Preparação {prep.prontos}/{prep.total}
+                          </StatusDot>
+                        )}
                       </span>
                       <span className="num block truncate text-xs text-muted-foreground">
                         {c.porte}, CNPJ {formatarCnpj(c.cnpj)}

@@ -1,7 +1,15 @@
 "use client";
 
 import { useActionState } from "react";
+import { Loader2 } from "lucide-react";
 import type { ClienteRow } from "@/lib/db";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
+import { NativeSelect } from "./ui/native-select";
+import { Checkbox } from "./ui/checkbox";
+import { Campo as CampoBase, Secao } from "./ui/campo";
+import { Aviso } from "./ui/aviso";
 
 /** Formulário de cliente, usado para criar e para editar. */
 export default function FormCliente({
@@ -15,69 +23,72 @@ export default function FormCliente({
 }) {
   const [msg, enviar, enviando] = useActionState(acao, null);
   return (
-    <form action={enviar} className="editor">
-      <div className="editor-secao">
-        <h3 className="editor-titulo">Empresa</h3>
-        <div className="grade-campos">
+    <form action={enviar} className="divide-y overflow-hidden rounded-lg border bg-card">
+      <Secao titulo="Empresa">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Campo nome="razao_social" rotulo="Razão social" valor={cliente?.razao_social} obrigatorio />
           <Campo nome="nome_fantasia" rotulo="Nome fantasia" valor={cliente?.nome_fantasia} />
           <Campo nome="cnpj" rotulo="CNPJ" valor={cliente?.cnpj} obrigatorio />
-          <label className="campo-rotulado">
-            <span>Porte</span>
-            <select className="campo" name="porte" defaultValue={cliente?.porte ?? "ME"}>
+          <CampoBase rotulo="Porte" dica="ME/EPP têm exclusividade até R$ 80 mil por item.">
+            <NativeSelect name="porte" defaultValue={cliente?.porte ?? "ME"}>
               <option value="MEI">MEI</option>
               <option value="ME">ME</option>
               <option value="EPP">EPP</option>
               <option value="demais">Demais</option>
-            </select>
-            <em className="dica">ME/EPP têm exclusividade até R$ 80 mil por item</em>
-          </label>
+            </NativeSelect>
+          </CampoBase>
         </div>
-      </div>
+      </Secao>
 
-      <div className="editor-secao">
-        <h3 className="editor-titulo">Contato</h3>
-        <div className="grade-campos">
+      <Secao titulo="Contato">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Campo nome="contato_nome" rotulo="Nome do responsável" valor={cliente?.contato_nome} />
+          <Campo nome="email" rotulo="E-mail" valor={cliente?.email} />
           <Campo
             nome="whatsapp"
             rotulo="WhatsApp"
             valor={cliente?.whatsapp}
             dica="55 + DDD + número. É por aqui que ele recebe o link para aprovar."
           />
-          <Campo nome="email" rotulo="E-mail" valor={cliente?.email} />
         </div>
-      </div>
+      </Secao>
 
-      <div className="editor-secao">
-        <h3 className="editor-titulo">O que a empresa faz</h3>
-        <p className="dica">
-          A IA lê isto para decidir se uma licitação serve. Escreva o que vende, como entrega,
-          em que região atua e — principalmente — o que <b>não</b> consegue fazer.
-        </p>
-        <textarea
-          className="campo campo-area"
+      <Secao
+        titulo="O que a empresa faz"
+        descricao={
+          <>
+            A IA lê isto para decidir se uma licitação serve. Escreva o que vende, como entrega, em que
+            região atua e — principalmente — o que <b className="font-medium text-foreground">não</b> consegue fazer.
+          </>
+        }
+      >
+        <Textarea
           name="contexto"
+          aria-label="O que a empresa faz"
           rows={5}
           defaultValue={cliente?.contexto ?? ""}
           placeholder="ex: manutenção predial e elétrica em Vitória e Grande Vitória, equipe de 8 técnicos, sem capacidade para obra nova acima de R$ 300 mil nem atendimento fora do ES."
         />
-      </div>
+      </Secao>
 
       {cliente && (
-        <div className="editor-secao">
-          <label className="linha-check">
-            <input type="checkbox" name="ativo" defaultChecked={cliente.ativo} />
-            <span>Cliente ativo. Desligado, a coleta para de procurar licitações para ele.</span>
+        <div className="p-5">
+          <label className="flex items-start gap-3 text-sm">
+            <Checkbox name="ativo" defaultChecked={cliente.ativo} className="mt-0.5" />
+            <span className="leading-relaxed">
+              <span className="font-medium">Cliente ativo.</span>{" "}
+              <span className="text-muted-foreground">Desligado, a coleta para de procurar licitações para ele.</span>
+            </span>
           </label>
         </div>
       )}
 
-      {msg && <p className={`aviso ${msg === "Salvo." ? "" : "aviso-erro"}`}>{msg}</p>}
-      <div className="acoes acoes-editor">
-        <button className="btn btn-primario" disabled={enviando}>
+      <div className="space-y-3 bg-muted/30 p-4 px-5">
+        {msg && <Aviso tom={msg === "Salvo." ? "sucesso" : "erro"}>{msg}</Aviso>}
+        <Button disabled={enviando}>
+          {enviando && <Loader2 className="animate-spin" />}
           {enviando ? "Salvando…" : rotulo}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -97,10 +108,8 @@ function Campo({
   dica?: string;
 }) {
   return (
-    <label className="campo-rotulado">
-      <span>{rotulo}</span>
-      <input className="campo" name={nome} defaultValue={valor ?? ""} required={obrigatorio} />
-      {dica && <em className="dica">{dica}</em>}
-    </label>
+    <CampoBase rotulo={rotulo} dica={dica}>
+      <Input name={nome} defaultValue={valor ?? ""} required={obrigatorio} />
+    </CampoBase>
   );
 }

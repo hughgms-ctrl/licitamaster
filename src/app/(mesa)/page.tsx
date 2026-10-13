@@ -2,7 +2,11 @@ import Link from "next/link";
 import { exigirOperadorPagina } from "@/lib/auth";
 import { db, SELECT_DISPUTA_COMPLETA, type DisputaCompleta } from "@/lib/db";
 import { STATUS_EXCLUSIVOS } from "@/lib/etapas";
-import Topo from "@/components/Topo";
+import { Cabecalho } from "@/components/Cabecalho";
+import { Aviso } from "@/components/ui/aviso";
+import { Vazio } from "@/components/ui/vazio";
+import { Button } from "@/components/ui/button";
+import { Building2, Plus } from "lucide-react";
 import Mesa from "@/components/Mesa";
 import type { FichaRow } from "@/lib/ficha";
 import type { DocumentoResumo } from "@/lib/documentos";
@@ -103,19 +107,17 @@ export default async function Home() {
   if (falha) {
     return (
       <>
-        <Topo titulo="Licitação Master" sub="mesa de operação" atual="mesa" />
-        <main className="pagina pagina-uma">
-          <div className="erro">
-            <strong>A mesa não conseguiu ler o banco.</strong>
-            <p>
-              Confira <code>SUPABASE_URL</code> e <code>SUPABASE_SERVICE_ROLE_KEY</code> e se o{" "}
-              a migration em <code>supabase/migrations</code> já foi aplicada.
-            </p>
-            <p>
-              <code>{falha}</code>
-            </p>
-          </div>
-        </main>
+        <Cabecalho titulo="Mesa" />
+        <Aviso tom="erro" titulo="A mesa não conseguiu ler o banco.">
+          <p>
+            Confira <code className="font-mono text-xs">SUPABASE_URL</code> e{" "}
+            <code className="font-mono text-xs">SUPABASE_SERVICE_ROLE_KEY</code> e se a migration em{" "}
+            <code className="font-mono text-xs">supabase/migrations</code> já foi aplicada.
+          </p>
+          <p>
+            <code className="break-all font-mono text-xs">{falha}</code>
+          </p>
+        </Aviso>
       </>
     );
   }
@@ -123,16 +125,16 @@ export default async function Home() {
   if (clientes.length === 0) {
     return (
       <>
-        <Topo titulo="Licitação Master" sub="mesa de operação" atual="mesa" />
-        <main className="pagina pagina-uma">
-          <div className="vazio">
-            <p>Nenhum cliente cadastrado.</p>
-            <p className="dica">
-              A coleta procura licitações para os perfis de busca dos clientes. Comece{" "}
-              <Link href="/clientes">cadastrando o primeiro</Link>.
-            </p>
-          </div>
-        </main>
+        <Cabecalho titulo="Mesa" />
+        <Vazio icone={Building2} titulo="Nenhum cliente cadastrado.">
+          <p>A coleta procura licitações para os perfis de busca dos clientes. Comece cadastrando o primeiro.</p>
+          <Button asChild size="sm">
+            <Link href="/clientes">
+              <Plus />
+              Cadastrar cliente
+            </Link>
+          </Button>
+        </Vazio>
       </>
     );
   }
@@ -148,16 +150,13 @@ export default async function Home() {
   }
 
   return (
-    <>
-      <Topo titulo="Licitação Master" sub="mesa de operação" atual="mesa" />
-      <Mesa
-        disputas={[...sugeridas, ...andamento, ...encerradas]}
-        clientes={clientes}
-        exclusivas={exclusivas}
-        ultimaColeta={ultimaColeta}
-        fichas={fichas}
-        cofres={cofres}
-      />
-    </>
+    <Mesa
+      disputas={[...sugeridas, ...andamento, ...encerradas]}
+      clientes={clientes}
+      exclusivas={exclusivas}
+      ultimaColeta={ultimaColeta}
+      fichas={fichas}
+      cofres={cofres}
+    />
   );
 }

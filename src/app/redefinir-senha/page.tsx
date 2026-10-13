@@ -2,33 +2,42 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
+import { Loader2 } from "lucide-react";
+import { TelaEntrada, linkEntrada } from "@/components/TelaEntrada";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Campo } from "@/components/ui/campo";
+import { Aviso } from "@/components/ui/aviso";
 import { pedirRedefinicao } from "../entrar/acoes";
 
 export default function RedefinirSenha() {
   const [msg, acao, enviando] = useActionState(pedirRedefinicao, null);
   return (
-    <main className="entrar">
-      <form action={acao} className="entrar-caixa">
-        <h1 className="entrar-marca">Esqueci a senha</h1>
-        {msg === "ENVIADO" ? (
-          <p>Se este e-mail tiver conta, enviamos um link para criar uma senha nova. Confira também o spam.</p>
-        ) : (
-          <>
-            <p className="dica">Enviamos um link para o seu e-mail para criar uma senha nova.</p>
-            <label className="campo-rotulado">
-              <span>E-mail</span>
-              <input className="campo" type="email" name="email" autoComplete="email" autoFocus required />
-            </label>
-            {msg && <p className="aviso aviso-erro">{msg}</p>}
-            <button className="btn btn-primario" disabled={enviando}>
-              {enviando ? "Enviando…" : "Enviar link"}
-            </button>
-          </>
-        )}
-        <div className="entrar-links">
-          <Link href="/entrar">Voltar para a entrada</Link>
-        </div>
-      </form>
-    </main>
+    <TelaEntrada
+      titulo="Esqueci a senha"
+      sub={msg === "ENVIADO" ? undefined : "Enviamos um link para o seu e-mail para criar uma senha nova."}
+      rodape={
+        <Link href="/entrar" className={linkEntrada}>
+          Voltar para a entrada
+        </Link>
+      }
+    >
+      {msg === "ENVIADO" ? (
+        <Aviso tom="sucesso">
+          Se este e-mail tiver conta, enviamos um link para criar uma senha nova. Confira também o spam.
+        </Aviso>
+      ) : (
+        <form action={acao} className="space-y-4">
+          <Campo rotulo="E-mail">
+            <Input type="email" name="email" autoComplete="email" autoFocus required />
+          </Campo>
+          {msg && <Aviso tom="erro">{msg}</Aviso>}
+          <Button className="w-full" disabled={enviando}>
+            {enviando && <Loader2 className="animate-spin" />}
+            {enviando ? "Enviando…" : "Enviar link"}
+          </Button>
+        </form>
+      )}
+    </TelaEntrada>
   );
 }

@@ -4,47 +4,64 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { Loader2 } from "lucide-react";
+import { TelaEntrada, linkEntrada } from "@/components/TelaEntrada";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Campo } from "@/components/ui/campo";
+import { Aviso } from "@/components/ui/aviso";
 import { entrar } from "./acoes";
 
 function Formulario() {
   const [erro, acao, enviando] = useActionState(entrar, null);
   const motivo = useSearchParams().get("motivo");
   return (
-    <form action={acao} className="entrar-caixa">
-      <h1 className="entrar-marca">Licitação Master</h1>
-      <p className="dica">Mesa de operação. Entre com o seu e-mail.</p>
+    <form action={acao} className="space-y-4">
       {motivo === "sem-acesso" && !erro && (
-        <p className="aviso aviso-erro">Sua conta ainda não foi liberada para a equipe. Peça ao administrador.</p>
+        <Aviso tom="erro">Sua conta ainda não foi liberada para a equipe. Peça ao administrador.</Aviso>
       )}
-      {motivo === "link-invalido" && !erro && (
-        <p className="aviso aviso-erro">O link expirou ou já foi usado. Peça outro.</p>
-      )}
-      <label className="campo-rotulado">
-        <span>E-mail</span>
-        <input className="campo" type="email" name="email" autoComplete="email" autoFocus required />
-      </label>
-      <label className="campo-rotulado">
-        <span>Senha</span>
-        <input className="campo" type="password" name="senha" autoComplete="current-password" required />
-      </label>
-      {erro && <p className="aviso aviso-erro">{erro}</p>}
-      <button className="btn btn-primario" disabled={enviando}>
+      {motivo === "link-invalido" && !erro && <Aviso tom="erro">O link expirou ou já foi usado. Peça outro.</Aviso>}
+      <Campo rotulo="E-mail">
+        <Input type="email" name="email" autoComplete="email" autoFocus required />
+      </Campo>
+      <Campo
+        rotulo={
+          <span className="flex items-center justify-between">
+            Senha
+            <Link href="/redefinir-senha" className="text-xs font-normal text-muted-foreground hover:text-foreground">
+              Esqueci a senha
+            </Link>
+          </span>
+        }
+      >
+        <Input type="password" name="senha" autoComplete="current-password" required />
+      </Campo>
+      {erro && <Aviso tom="erro">{erro}</Aviso>}
+      <Button className="w-full" disabled={enviando}>
+        {enviando && <Loader2 className="animate-spin" />}
         {enviando ? "Entrando…" : "Entrar"}
-      </button>
-      <div className="entrar-links">
-        <Link href="/redefinir-senha">Esqueci a senha</Link>
-        <Link href="/criar-conta">Criar conta</Link>
-      </div>
+      </Button>
     </form>
   );
 }
 
 export default function Entrar() {
   return (
-    <main className="entrar">
+    <TelaEntrada
+      titulo="Entrar na mesa"
+      sub="Mesa de operação. Entre com o seu e-mail."
+      rodape={
+        <span>
+          Primeira vez?{" "}
+          <Link href="/criar-conta" className={`font-medium text-foreground ${linkEntrada}`}>
+            Criar conta
+          </Link>
+        </span>
+      }
+    >
       <Suspense>
         <Formulario />
       </Suspense>
-    </main>
+    </TelaEntrada>
   );
 }

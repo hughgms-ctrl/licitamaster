@@ -2,6 +2,19 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import {
+  ExternalLink,
+  FileSearch,
+  FileText,
+  Inbox,
+  Loader2,
+  RefreshCw,
+  Search,
+  Send,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { procurarAgora } from "@/app/filtros/acoes";
 import type { AnaliseIA, DisputaCompleta, StatusDisputa } from "@/lib/db";
 import { ROTULO_STATUS, TRANSICOES_OPERADOR } from "@/lib/etapas";
@@ -9,8 +22,21 @@ import { formatarData, formatarValor, limparObjeto } from "@/lib/formato";
 import { analisar, enviarAoCliente, lerEditalAcao, mudarStatus, salvarNotas, type Saida } from "@/app/acoes";
 import type { FichaRow } from "@/lib/ficha";
 import type { DocumentoResumo } from "@/lib/documentos";
+import { cn } from "@/lib/utils";
 import FichaEdital from "./FichaEdital";
 import CopiarLink from "./CopiarLink";
+import { Cabecalho } from "./Cabecalho";
+import { TOM_STATUS } from "./tons";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
+import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
+import { NativeSelect } from "./ui/native-select";
+import { StatusDot } from "./ui/status-dot";
+import { StatStrip } from "./ui/stat-strip";
+import { Aviso } from "./ui/aviso";
+import { Vazio } from "./ui/vazio";
+import { useConfirmar } from "./ui/confirmar";
 
 /**
  * As abas seguem o caminho da disputa. Cada uma é uma pergunta diferente:
@@ -50,6 +76,27 @@ const ACAO_PARA: Partial<Record<StatusDisputa, string>> = {
   perdeu: "Perdeu",
   desistiu: "Desistir",
 };
+
+type AvisoMesa = Saida & { titulo: string };
+
+/**
+ * Resultado de ações que tiram a licitação da aba atual (enviar, mudar de
+ * etapa). Não pode morar no item: o item some da lista no mesmo instante, e
+ * junto sumiria a mensagem — inclusive o link do portal quando o WhatsApp
+ * não saiu, que é a única forma de chegar ao cliente. Com link, o aviso fica
+ * na tela até ser fechado.
+ */
+function avisar(a: AvisoMesa) {
+  const corpo = (
+    <div className="space-y-2">
+      <p>{a.mensagem}</p>
+      {a.link && <CopiarLink link={a.link} />}
+    </div>
+  );
+  const opcoes = { description: corpo, duration: a.link ? Infinity : 6000, closeButton: true };
+  if (a.ok) toast.success(a.titulo, opcoes);
+  else toast.error(a.titulo, opcoes);
+}
 
 interface Props {
   disputas: DisputaCompleta[];
@@ -107,11 +154,19 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
     });
   }, [disputas, aba, cliente, busca]);
 
-  // Resultado de ações que tiram a licitação da aba atual (enviar, mudar de
-  // etapa). Não pode morar no item: o item some da lista no mesmo instante, e
-  // junto sumiria a mensagem — inclusive o link do portal quando o WhatsApp
-  // não saiu, que é a única forma de chegar ao cliente.
-  const [aviso, setAviso] = useState<(Saida & { titulo: string }) | null>(null);
+  // Para o resumo do topo: o que fecha em 48h na triagem pede atenção hoje.
+  const urgentes = useMemo(
+    () =>
+      disputas.filter((d) => {
+        if (!["sugerida", "aguardando_cliente", "aprovada", "em_preparacao"].includes(d.status)) return false;
+        if (cliente !== "todos" && d.cliente_id !== cliente) return false;
+        const iso = d.licitacao.data_encerramento_proposta;
+        if (!iso) return false;
+        const h = (new Date(iso).getTime() - agora) / 36e5;
+        return h >= 0 && h < 48;
+      }).length,
+    [disputas, cliente, agora]
+  );
 
   function atualizar(id: string, campos: Partial<DisputaCompleta>) {
     setDisputas((xs) => xs.map((d) => (d.id === id ? { ...d, ...campos } : d)));
@@ -122,137 +177,164 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
     : null;
   const coletaParada = horasDesdeColeta == null || horasDesdeColeta > 3;
 
+  const filtrando = busca !== "" || cliente !== "todos";
+
   return (
     <>
-      <div className="abas-faixa">
-        <div className="abas" role="tablist" aria-label="Etapas">
-          {ABAS.map((a) => (
-            <button
-              key={a.id}
-              role="tab"
-              className="aba"
-              aria-selected={aba === a.id}
-              onClick={() => setAba(a.id)}
-            >
-              {a.rotulo}
-              <span className="aba-n">{porAba[a.id]}</span>
-            </button>
-          ))}
-        </div>
-        <button
-          className="btn btn-buscar"
-          disabled={buscando}
-          onClick={async () => {
-            setBuscando(true);
-            try {
-              const r = await procurarAgora();
-              setAviso({ ok: r.ok, mensagem: r.mensagem, titulo: "Busca no PNCP" });
-              router.refresh();
-            } catch (e) {
-              setAviso({ ok: false, mensagem: (e as Error).message, titulo: "Busca no PNCP" });
-            } finally {
-              setBuscando(false);
-            }
-          }}
-        >
-          {buscando ? "Buscando no PNCP…" : "Buscar agora"}
-        </button>
-        <p className={`coleta ${coletaParada ? "coleta-parada" : ""}`}>
-          {ultimaColeta?.finalizado_em
-            ? `Última coleta ${formatarData(ultimaColeta.finalizado_em)}`
-            : "Nenhuma coleta ainda"}
-          {ultimaColeta?.erro ? ", com erros" : ""}
-        </p>
-      </div>
+      <Cabecalho
+        titulo="Mesa"
+        sub={
+          <StatusDot tom={ultimaColeta?.erro ? "perigo" : coletaParada ? "alerta" : "sucesso"}>
+            {ultimaColeta?.finalizado_em
+              ? `Última coleta ${formatarData(ultimaColeta.finalizado_em)}`
+              : "Nenhuma coleta ainda"}
+            {ultimaColeta?.erro ? ", com erros" : coletaParada && ultimaColeta?.finalizado_em ? ", parada há mais de 3h" : ""}
+          </StatusDot>
+        }
+        acoes={
+          <Button
+            disabled={buscando}
+            onClick={async () => {
+              setBuscando(true);
+              try {
+                const r = await procurarAgora();
+                avisar({ ok: r.ok, mensagem: r.mensagem, titulo: "Busca no PNCP" });
+                router.refresh();
+              } catch (e) {
+                avisar({ ok: false, mensagem: (e as Error).message, titulo: "Busca no PNCP" });
+              } finally {
+                setBuscando(false);
+              }
+            }}
+          >
+            {buscando ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+            {buscando ? "Buscando no PNCP…" : "Buscar agora"}
+          </Button>
+        }
+      />
 
-      <main className="pagina">
-        <aside className="rail" aria-label="Filtros da lista">
-          <label className="campo-rotulado">
-            <span>Cliente</span>
-            <select className="campo" value={cliente} onChange={(e) => setCliente(e.target.value)}>
-              <option value="todos">Todos os clientes</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="campo-rotulado">
-            <span>Buscar</span>
-            <input
-              className="campo"
+      <StatStrip
+        className="mb-6"
+        itens={[
+          { rotulo: "Na triagem", valor: porAba.triagem },
+          {
+            rotulo: "Fecham em 48h",
+            valor: urgentes,
+            tom: urgentes > 0 ? "alerta" : undefined,
+            detalhe: "triagem até preparação",
+          },
+          { rotulo: "Com o cliente", valor: porAba.cliente },
+          { rotulo: "Em preparação", valor: porAba.preparacao },
+          { rotulo: "Em disputa", valor: porAba.disputa },
+          {
+            rotulo: "Ganhas em 30 dias",
+            valor: disputas.filter((d) => d.status === "ganhou" && (cliente === "todos" || d.cliente_id === cliente)).length,
+            tom: "sucesso",
+          },
+        ]}
+      />
+
+      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div role="tablist" aria-label="Etapas" className="-mx-1 flex overflow-x-auto px-1 pb-1 xl:pb-0">
+          <div className="inline-flex h-9 items-center rounded-lg bg-muted p-1">
+            {ABAS.map((a) => (
+              <button
+                key={a.id}
+                role="tab"
+                aria-selected={aba === a.id}
+                onClick={() => setAba(a.id)}
+                className={cn(
+                  "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  aba === a.id && "bg-card text-foreground shadow-sm dark:bg-accent dark:shadow-none"
+                )}
+              >
+                {a.rotulo}
+                <span
+                  className={cn(
+                    "num rounded px-1.5 text-xs",
+                    aba === a.id ? "bg-primary/10 text-primary dark:text-sidebar-primary" : "text-muted-foreground"
+                  )}
+                >
+                  {porAba[a.id]}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <NativeSelect
+            aria-label="Cliente"
+            className="sm:w-56"
+            value={cliente}
+            onChange={(e) => setCliente(e.target.value)}
+          >
+            <option value="todos">Todos os clientes</option>
+            {clientes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </NativeSelect>
+          <div className="relative sm:w-64">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
               type="search"
+              aria-label="Buscar"
               placeholder="Objeto, órgão ou cidade"
+              className="pl-8"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
             />
-          </label>
-          <p className="dica">{AJUDA_ABA[aba]}</p>
-        </aside>
-
-        <section>
-          {visiveis.length === 0 ? (
-            <div className="vazio">
-              {busca || cliente !== "todos" ? (
-                <>
-                  <p>Nada com esses filtros.</p>
-                  <button
-                    className="btn"
-                    onClick={() => {
-                      setBusca("");
-                      setCliente("todos");
-                    }}
-                  >
-                    Limpar filtros
-                  </button>
-                </>
-              ) : aba === "triagem" ? (
-                <>
-                  <p>Triagem em dia.</p>
-                  <p className="dica">
-                    Novas licitações chegam a cada coleta. Se a triagem fica vazia por dias, os
-                    perfis de busca dos clientes estão estreitos demais.
-                  </p>
-                </>
-              ) : (
-                <p>Nada nesta etapa agora.</p>
-              )}
-            </div>
-          ) : (
-            <div className="lista">
-              {visiveis.map((d) => (
-                <Item
-                  key={d.id}
-                  d={d}
-                  agora={agora}
-                  comOutro={
-                    exclusivas[d.licitacao_id] &&
-                    !["aguardando_cliente", "aprovada", "em_preparacao", "proposta_enviada", "em_disputa", "ganhou"].includes(d.status)
-                      ? exclusivas[d.licitacao_id]
-                      : null
-                  }
-                  atualizar={atualizar}
-                  avisar={setAviso}
-                  fichaInicial={fichas[d.licitacao_id] ?? null}
-                  cofre={cofres[d.cliente_id] ?? []}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      </main>
-
-      {aviso && (
-        <div className={`toast ${aviso.ok ? "" : "toast-erro"}`} role="status">
-          <div className="toast-texto">
-            <p className="toast-titulo">{aviso.titulo}</p>
-            <p>{aviso.mensagem}</p>
-            {aviso.link && <CopiarLink link={aviso.link} />}
           </div>
-          <button className="btn btn-discreto" onClick={() => setAviso(null)} aria-label="Fechar aviso">
-            Fechar
-          </button>
+        </div>
+      </div>
+
+      <p className="mb-3 text-sm text-muted-foreground">{AJUDA_ABA[aba]}</p>
+
+      {visiveis.length === 0 ? (
+        filtrando ? (
+          <Vazio icone={Search} titulo="Nada com esses filtros.">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setBusca("");
+                setCliente("todos");
+              }}
+            >
+              <X />
+              Limpar filtros
+            </Button>
+          </Vazio>
+        ) : aba === "triagem" ? (
+          <Vazio icone={Inbox} titulo="Triagem em dia.">
+            <p>
+              Novas licitações chegam a cada coleta. Se a triagem fica vazia por dias, os perfis de busca
+              dos clientes estão estreitos demais.
+            </p>
+          </Vazio>
+        ) : (
+          <Vazio icone={Inbox} titulo="Nada nesta etapa agora." />
+        )
+      ) : (
+        <div className="divide-y overflow-hidden rounded-lg border bg-card">
+          {visiveis.map((d) => (
+            <Item
+              key={d.id}
+              d={d}
+              agora={agora}
+              comOutro={
+                exclusivas[d.licitacao_id] &&
+                !["aguardando_cliente", "aprovada", "em_preparacao", "proposta_enviada", "em_disputa", "ganhou"].includes(d.status)
+                  ? exclusivas[d.licitacao_id]
+                  : null
+              }
+              atualizar={atualizar}
+              fichaInicial={fichas[d.licitacao_id] ?? null}
+              cofre={cofres[d.cliente_id] ?? []}
+            />
+          ))}
         </div>
       )}
     </>
@@ -260,7 +342,6 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
 }
 
 function Item({
-  avisar,
   fichaInicial,
   cofre,
   d,
@@ -273,7 +354,6 @@ function Item({
   /** nome do outro cliente que já está com esta licitação, se houver */
   comOutro: string | null;
   atualizar: (id: string, campos: Partial<DisputaCompleta>) => void;
-  avisar: (a: Saida & { titulo: string }) => void;
   fichaInicial: FichaRow | null;
   cofre: DocumentoResumo[];
 }) {
@@ -284,6 +364,7 @@ function Item({
   const [abrirFicha, setAbrirFicha] = useState(false);
   const [lendo, setLendo] = useState(false);
   const [notas, setNotas] = useState(d.notas_operador ?? "");
+  const [confirmar, dialogo] = useConfirmar();
   const l = d.licitacao;
   const nomeCliente = d.cliente.nome_fantasia || d.cliente.razao_social;
 
@@ -309,79 +390,89 @@ function Item({
   const local = [l.municipio, l.uf].filter(Boolean).join("/");
 
   return (
-    <article className="lic">
-      <div className={`lic-prazo prazo-${prazo.nivel}`} title={formatarData(l.data_encerramento_proposta)}>
-        <span className="lic-prazo-num">{prazo.num}</span>
-        <span className="lic-prazo-rot">{prazo.rot}</span>
+    <article className="flex gap-4 p-4 sm:p-5">
+      <div
+        className={cn(
+          "flex w-14 shrink-0 flex-col sm:w-[4.5rem] items-center justify-center self-start rounded-md border px-1 py-2 text-center",
+          prazo.nivel === "critico" && "border-destructive/30 bg-destructive/10 text-destructive",
+          prazo.nivel === "atencao" && "border-warning/30 bg-warning/10 text-warning",
+          prazo.nivel === "ok" && "border-success/25 bg-success/10 text-success",
+          prazo.nivel === "neutro" && "bg-muted/60 text-muted-foreground"
+        )}
+        title={formatarData(l.data_encerramento_proposta)}
+      >
+        <span className="num text-lg font-semibold leading-none tracking-tight">{prazo.num}</span>
+        <span className="mt-1 text-[0.6875rem] leading-tight opacity-80">{prazo.rot}</span>
       </div>
 
-      <div className="lic-corpo">
-        <div className="lic-topo">
-          <p className="lic-orgao">{l.orgao_razao_social ?? "Órgão não informado"}</p>
-          <span className="chip-cliente">{nomeCliente}</span>
-        </div>
-
-        <p className="lic-objeto">{limparObjeto(l.objeto)}</p>
-
-        <dl className="fatos">
-          <div>
-            <dt>Valor estimado</dt>
-            <dd className="num">{formatarValor(l.valor_estimado)}</dd>
-          </div>
-          <div>
-            <dt>Local</dt>
-            <dd>{local || "—"}</dd>
-          </div>
-          <div>
-            <dt>Modalidade</dt>
-            <dd>
-              {l.modalidade_nome ?? "—"}
-              {l.srp ? ", registro de preços" : ""}
-            </dd>
-          </div>
-          <div>
-            <dt>Propostas até</dt>
-            <dd className="num">{formatarData(l.data_encerramento_proposta)}</dd>
-          </div>
-          <div>
-            <dt>Aderência</dt>
-            <dd className="num" title={d.termos_encontrados.join(", ")}>
-              {d.score} de 100
-            </dd>
-          </div>
-        </dl>
-
-        {(d.status !== "sugerida" || l.revisoes > 0) && (
-          <div className="selos">
+      <div className="min-w-0 flex-1 space-y-3">
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className="min-w-0 truncate text-xs text-muted-foreground">{l.orgao_razao_social ?? "Órgão não informado"}</p>
+            <Badge variant="secondary">{nomeCliente}</Badge>
             {d.status !== "sugerida" && (
-              <span className={`selo selo-${d.status}`}>{ROTULO_STATUS[d.status]}</span>
+              <StatusDot tom={TOM_STATUS[d.status]} pulsar={d.status === "em_disputa"}>
+                {ROTULO_STATUS[d.status]}
+              </StatusDot>
             )}
             {l.revisoes > 0 && (
-              <span className="selo selo-alerta">
-                Edital retificado {l.revisoes === 1 ? "uma vez" : `${l.revisoes} vezes`}
-              </span>
+              <StatusDot tom="alerta">Edital retificado {l.revisoes === 1 ? "uma vez" : `${l.revisoes} vezes`}</StatusDot>
             )}
           </div>
-        )}
+          <p className="line-clamp-3 text-[0.9375rem] font-medium leading-snug">{limparObjeto(l.objeto)}</p>
+        </div>
 
-        {d.preco_minimo != null && (
-          <p className="piso">
-            Preço mínimo do cliente <b className="num">{formatarValor(d.preco_minimo)}</b>
-            {l.valor_estimado && l.valor_estimado > 0 && (
-              <span className="piso-pct">
-                {Math.round((d.preco_minimo / l.valor_estimado) * 100)}% do estimado
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3 xl:grid-cols-5">
+          <Fato rotulo="Valor estimado" num>
+            {formatarValor(l.valor_estimado)}
+          </Fato>
+          <Fato rotulo="Local">{local || "—"}</Fato>
+          <Fato rotulo="Modalidade">
+            {l.modalidade_nome ?? "—"}
+            {l.srp ? ", registro de preços" : ""}
+          </Fato>
+          <Fato rotulo="Propostas até" num>
+            {formatarData(l.data_encerramento_proposta)}
+          </Fato>
+          <Fato rotulo="Aderência" num title={d.termos_encontrados.join(", ")}>
+            <span className="inline-flex items-center gap-2">
+              {d.score}
+              <span className="h-1 w-12 overflow-hidden rounded-full bg-muted">
+                <span
+                  className={cn(
+                    "block h-full rounded-full",
+                    d.score >= 60 ? "bg-success" : d.score >= 35 ? "bg-warning" : "bg-muted-foreground/50"
+                  )}
+                  style={{ width: `${Math.min(100, d.score)}%` }}
+                />
               </span>
+            </span>
+          </Fato>
+        </dl>
+
+        {(d.preco_minimo != null || (d.status === "recusada" && d.motivo_recusa) || comOutro) && (
+          <div className="space-y-2">
+            {d.preco_minimo != null && (
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md bg-muted/60 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Preço mínimo do cliente</span>
+                <b className="num font-semibold">{formatarValor(d.preco_minimo)}</b>
+                {l.valor_estimado && l.valor_estimado > 0 && (
+                  <span className="num text-xs text-muted-foreground">
+                    {Math.round((d.preco_minimo / l.valor_estimado) * 100)}% do estimado
+                  </span>
+                )}
+                {d.notas_cliente && <span className="basis-full italic text-muted-foreground">“{d.notas_cliente}”</span>}
+              </div>
             )}
-            {d.notas_cliente && <span className="piso-nota">“{d.notas_cliente}”</span>}
-          </p>
-        )}
-        {d.status === "recusada" && d.motivo_recusa && (
-          <p className="piso piso-recusa">Recusou: “{d.motivo_recusa}”</p>
-        )}
-        {comOutro && (
-          <p className="piso piso-recusa">
-            Esta licitação já está com <b>{comOutro}</b>. Um cliente por licitação.
-          </p>
+            {d.status === "recusada" && d.motivo_recusa && (
+              <Aviso tom="erro">Recusou: “{d.motivo_recusa}”</Aviso>
+            )}
+            {comOutro && (
+              <Aviso tom="alerta">
+                Esta licitação já está com <b>{comOutro}</b>. Um cliente por licitação.
+              </Aviso>
+            )}
+          </div>
         )}
 
         {abrirAnalise && d.analise_ia && <Analise a={d.analise_ia} />}
@@ -399,10 +490,10 @@ function Item({
           />
         )}
 
-        <div className="acoes">
+        <div className="flex flex-wrap items-center gap-2">
           {podeEnviar && (
-            <button
-              className="btn btn-primario"
+            <Button
+              size="sm"
               disabled={pendente || comOutro != null}
               title={comOutro ? `Já está com ${comOutro}` : undefined}
               onClick={() =>
@@ -415,12 +506,20 @@ function Item({
                 )
               }
             >
+              <Send />
               {d.status === "recusada" ? "Reenviar ao cliente" : "Enviar ao cliente"}
-            </button>
+            </Button>
           )}
 
-          <button
-            className="btn"
+          {destinos
+            .filter((para) => !podeEnviar && para === proximoPasso)
+            .map((para) => (
+              botaoEtapa(para, "default")
+            ))}
+
+          <Button
+            size="sm"
+            variant="outline"
             disabled={pendente}
             aria-expanded={d.analise_ia ? abrirAnalise : undefined}
             onClick={() =>
@@ -436,6 +535,7 @@ function Item({
                   )
             }
           >
+            {pendente && !d.analise_ia ? <Loader2 className="animate-spin" /> : <Sparkles />}
             {d.analise_ia
               ? abrirAnalise
                 ? "Fechar análise"
@@ -443,51 +543,11 @@ function Item({
               : pendente
                 ? "Analisando…"
                 : "Analisar com IA"}
-          </button>
+          </Button>
 
-          {destinos.map((para) => (
-            <button
-              key={para}
-              className={`btn ${
-                ["descartada", "desistiu", "perdeu"].includes(para)
-                  ? "btn-discreto"
-                  : !podeEnviar && para === proximoPasso
-                    ? "btn-primario"
-                    : ""
-              }`}
-              disabled={pendente}
-              onClick={() => {
-                if (
-                  para === "desistiu" &&
-                  !confirm(
-                    "Desistir desta disputa? Se a proposta já foi enviada, desistir pode gerar penalidade ao cliente. Confira o edital."
-                  )
-                )
-                  return;
-                rodar(
-                  () => mudarStatus(d.id, para),
-                  () => {
-                    avisar({
-                      ok: true,
-                      mensagem:
-                        para === "sugerida"
-                          ? "Voltou para a triagem."
-                          : `Movida para "${ROTULO_STATUS[para]}".`,
-                      titulo: limparObjeto(l.objeto).slice(0, 90),
-                    });
-                    atualizar(d.id, { status: para });
-                  }
-                );
-              }}
-            >
-              {d.status === "aguardando_cliente" && para === "sugerida"
-                ? "Cancelar envio"
-                : (ACAO_PARA[para] ?? ROTULO_STATUS[para])}
-            </button>
-          ))}
-
-          <button
-            className="btn"
+          <Button
+            size="sm"
+            variant="outline"
             disabled={lendo}
             aria-expanded={ficha ? abrirFicha : undefined}
             onClick={async () => {
@@ -508,6 +568,7 @@ function Item({
               }
             }}
           >
+            {lendo ? <Loader2 className="animate-spin" /> : ficha ? <FileText /> : <FileSearch />}
             {lendo
               ? "Lendo o edital… (1 a 3 min)"
               : ficha
@@ -515,31 +576,37 @@ function Item({
                   ? "Fechar ficha"
                   : "Ficha do edital"
                 : "Ler edital"}
-          </button>
+          </Button>
 
           {(l.link_pncp || l.link_sistema_origem) && (
-            <a
-              className="link-edital"
-              href={l.link_pncp ?? l.link_sistema_origem!}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Abrir edital
-            </a>
+            <Button size="sm" variant="ghost" asChild>
+              <a href={l.link_pncp ?? l.link_sistema_origem!} target="_blank" rel="noreferrer">
+                <ExternalLink />
+                Abrir edital
+              </a>
+            </Button>
           )}
+
+          <span className="flex-1" />
+
+          {destinos
+            .filter((para) => podeEnviar || para !== proximoPasso)
+            .map((para) => (
+              botaoEtapa(para, ["descartada", "desistiu", "perdeu"].includes(para) ? "ghost" : "outline")
+            ))}
         </div>
 
         {saida && (
-          <div className={`aviso ${saida.ok ? "" : "aviso-erro"}`} role="status">
+          <Aviso tom={saida.ok ? "sucesso" : "erro"}>
             <p>{saida.mensagem}</p>
             {saida.link && <CopiarLink link={saida.link} />}
-          </div>
+          </Aviso>
         )}
 
         {!["sugerida", "descartada"].includes(d.status) && (
-          <textarea
-            className="campo campo-area notas"
+          <Textarea
             rows={2}
+            className="min-h-0 bg-muted/40 text-sm dark:bg-muted/40"
             aria-label="Notas internas"
             placeholder="Notas internas. O cliente não vê."
             value={notas}
@@ -555,7 +622,67 @@ function Item({
           />
         )}
       </div>
+      {dialogo}
     </article>
+  );
+
+  function botaoEtapa(para: StatusDisputa, variante: "default" | "outline" | "ghost") {
+    return (
+      <Button
+        key={para}
+        size="sm"
+        variant={variante}
+        className={cn(variante === "ghost" && "text-muted-foreground")}
+        disabled={pendente}
+        onClick={async () => {
+          if (
+            para === "desistiu" &&
+            !(await confirmar({
+              titulo: "Desistir desta disputa?",
+              texto:
+                "Se a proposta já foi enviada, desistir pode gerar penalidade ao cliente. Confira o edital.",
+              confirmar: "Desistir",
+              destrutivo: true,
+            }))
+          )
+            return;
+          rodar(
+            () => mudarStatus(d.id, para),
+            () => {
+              avisar({
+                ok: true,
+                mensagem: para === "sugerida" ? "Voltou para a triagem." : `Movida para "${ROTULO_STATUS[para]}".`,
+                titulo: limparObjeto(l.objeto).slice(0, 90),
+              });
+              atualizar(d.id, { status: para });
+            }
+          );
+        }}
+      >
+        {d.status === "aguardando_cliente" && para === "sugerida"
+          ? "Cancelar envio"
+          : (ACAO_PARA[para] ?? ROTULO_STATUS[para])}
+      </Button>
+    );
+  }
+}
+
+function Fato({
+  rotulo,
+  children,
+  num,
+  title,
+}: {
+  rotulo: string;
+  children: React.ReactNode;
+  num?: boolean;
+  title?: string;
+}) {
+  return (
+    <div className="min-w-0" title={title}>
+      <dt className="text-xs text-muted-foreground">{rotulo}</dt>
+      <dd className={cn("font-medium sm:truncate", num && "num")}>{children}</dd>
+    </div>
   );
 }
 
@@ -589,16 +716,24 @@ function rotuloVeredito(v: AnaliseIA["veredito"]) {
 }
 
 function Analise({ a }: { a: AnaliseIA }) {
-  const cor = a.veredito === "vale_a_pena" ? "u-verde" : a.veredito === "nao_vale" ? "u-brasa" : "u-ambar";
+  const tom = a.veredito === "vale_a_pena" ? "sucesso" : a.veredito === "nao_vale" ? "perigo" : "alerta";
   return (
-    <div className="analise">
-      <div className={`analise-veredito ${cor}`}>{rotuloVeredito(a.veredito)}</div>
-      <p style={{ margin: 0 }}>{a.resumo}</p>
-      <h4>O cliente vai ler</h4>
-      <p style={{ margin: 0 }} className="dica">{a.resumo_cliente}</p>
-      <Lista titulo="O que pedem" itens={a.o_que_pedem} />
-      <Lista titulo="Riscos" itens={a.riscos} />
-      <Lista titulo="Conferir no edital antes de enviar" itens={a.perguntas} />
+    <div className="space-y-4 rounded-md border bg-background/40 p-4 text-sm">
+      <div className="flex items-center gap-2">
+        <Sparkles className="size-4 text-muted-foreground" />
+        <span className="font-medium">Análise da IA</span>
+        <StatusDot tom={tom}>{rotuloVeredito(a.veredito)}</StatusDot>
+      </div>
+      <p className="leading-relaxed">{a.resumo}</p>
+      <div className="space-y-1">
+        <h4 className="text-xs font-medium text-muted-foreground">O cliente vai ler</h4>
+        <p className="leading-relaxed text-muted-foreground">{a.resumo_cliente}</p>
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Lista titulo="O que pedem" itens={a.o_que_pedem} />
+        <Lista titulo="Riscos" itens={a.riscos} />
+        <Lista titulo="Conferir no edital antes de enviar" itens={a.perguntas} />
+      </div>
     </div>
   );
 }
@@ -606,13 +741,13 @@ function Analise({ a }: { a: AnaliseIA }) {
 function Lista({ titulo, itens }: { titulo: string; itens: string[] }) {
   if (!itens?.length) return null;
   return (
-    <>
-      <h4>{titulo}</h4>
-      <ul>
+    <div className="space-y-1.5">
+      <h4 className="text-xs font-medium text-muted-foreground">{titulo}</h4>
+      <ul className="list-disc space-y-1 pl-4 leading-relaxed marker:text-muted-foreground/60">
         {itens.map((x, i) => (
           <li key={i}>{x}</li>
         ))}
       </ul>
-    </>
+    </div>
   );
 }

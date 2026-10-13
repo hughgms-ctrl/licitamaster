@@ -3,6 +3,9 @@
 import { checklistHabilitacao, type DocumentoResumo, type ItemChecklist } from "@/lib/documentos";
 import type { FichaRow } from "@/lib/ficha";
 import { formatarData, formatarValor } from "@/lib/formato";
+import { FileText } from "lucide-react";
+import { Aviso } from "./ui/aviso";
+import { StatusDot, type Tom } from "./ui/status-dot";
 
 /** "15/10/2026 09:00" → ISO, para comparar com a validade das certidões. */
 function dataDaSessao(texto: string | null): string | null {
@@ -16,6 +19,13 @@ const ROTULO_ITEM: Record<ItemChecklist["situacao"], string> = {
   vence_logo: "Vence antes da sessão",
   vencido: "Vencido",
   falta: "Falta",
+};
+
+const TOM_ITEM: Record<ItemChecklist["situacao"], Tom> = {
+  ok: "sucesso",
+  vence_logo: "alerta",
+  vencido: "perigo",
+  falta: "perigo",
 };
 
 /**
@@ -42,16 +52,17 @@ export default function FichaEdital({
   const prontos = checklist.filter((c) => c.situacao === "ok").length;
 
   return (
-    <div className="ficha">
+    <div className="space-y-5 rounded-md border bg-background/40 p-4 text-sm">
       {editalMudouDepois && (
-        <p className="aviso aviso-erro">
-          O edital foi retificado no PNCP depois desta leitura. Leia de novo antes de seguir.
-        </p>
+        <Aviso tom="erro">O edital foi retificado no PNCP depois desta leitura. Leia de novo antes de seguir.</Aviso>
       )}
 
-      <p className="ficha-resumo">{f.resumo}</p>
+      <div className="flex items-start gap-2">
+        <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <p className="leading-relaxed">{f.resumo}</p>
+      </div>
 
-      <dl className="fatos">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 xl:grid-cols-4">
         <Fato rotulo="Sessão" valor={f.sessao.data_hora} />
         <Fato rotulo="Plataforma" valor={f.sessao.plataforma} link={f.sessao.link} />
         <Fato rotulo="Disputa" valor={f.sessao.modo_disputa} />
@@ -66,75 +77,86 @@ export default function FichaEdital({
         <Fato rotulo="Pagamento" valor={f.prazos.pagamento} />
       </dl>
 
-      <section className="ficha-secao">
-        <h4>
-          Habilitação de {nomeCliente}{" "}
-          <span className={`ficha-placar ${prontos === checklist.length ? "u-verde" : "u-ambar"}`}>
-            {prontos} de {checklist.length} prontos
-          </span>
-        </h4>
+      <section className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-sm font-semibold">Habilitação de {nomeCliente}</h4>
+          <StatusDot tom={prontos === checklist.length ? "sucesso" : "alerta"}>
+            <span className="num">
+              {prontos} de {checklist.length} prontos
+            </span>
+          </StatusDot>
+        </div>
         {checklist.length === 0 ? (
-          <p className="dica">A leitura não identificou documentos de habilitação no edital.</p>
+          <p className="text-muted-foreground">A leitura não identificou documentos de habilitação no edital.</p>
         ) : (
-          <ul className="checklist">
+          <ul className="divide-y overflow-hidden rounded-md border bg-card">
             {checklist.map((c, i) => (
-              <li key={`${c.tipo}-${i}`} className={`checklist-${c.situacao}`}>
-                <span className="checklist-status">{ROTULO_ITEM[c.situacao]}</span>
-                <span className="checklist-nome">{c.rotulo}</span>
-                {c.detalhe && <span className="checklist-detalhe">{c.detalhe}</span>}
+              <li key={`${c.tipo}-${i}`} className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:items-center sm:gap-3">
+                <span className="w-44 shrink-0">
+                  <StatusDot tom={TOM_ITEM[c.situacao]}>{ROTULO_ITEM[c.situacao]}</StatusDot>
+                </span>
+                <span className="min-w-0 flex-1">{c.rotulo}</span>
+                {c.detalhe && <span className="text-xs text-muted-foreground">{c.detalhe}</span>}
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      <Lista titulo="Qualificação técnica" itens={f.exigencias_tecnicas} />
-      <Lista titulo="Qualificação econômica" itens={f.qualificacao_economica} />
-      <Lista
-        titulo="Visita, amostra e garantia"
-        itens={[
-          f.visita_tecnica && `Visita técnica: ${f.visita_tecnica}`,
-          f.amostra && `Amostra: ${f.amostra}`,
-          f.garantia && `Garantia: ${f.garantia}`,
-        ].filter((x): x is string => !!x)}
-      />
-      <Lista titulo="Riscos" itens={f.riscos} />
+      <div className="grid gap-5 md:grid-cols-2">
+        <Lista titulo="Qualificação técnica" itens={f.exigencias_tecnicas} />
+        <Lista titulo="Qualificação econômica" itens={f.qualificacao_economica} />
+        <Lista
+          titulo="Visita, amostra e garantia"
+          itens={[
+            f.visita_tecnica && `Visita técnica: ${f.visita_tecnica}`,
+            f.amostra && `Amostra: ${f.amostra}`,
+            f.garantia && `Garantia: ${f.garantia}`,
+          ].filter((x): x is string => !!x)}
+        />
+        <Lista titulo="Riscos" itens={f.riscos} />
+      </div>
 
       {f.clausulas_restritivas.length > 0 && (
-        <section className="ficha-secao">
-          <h4>Cláusulas que podem ser impugnadas</h4>
-          <ul>
+        <section className="space-y-2">
+          <h4 className="text-sm font-semibold">Cláusulas que podem ser impugnadas</h4>
+          <ul className="space-y-2">
             {f.clausulas_restritivas.map((c, i) => (
-              <li key={i}>
-                <b>{c.clausula}</b> {c.referencia && <span className="dica">({c.referencia})</span>}
-                <br />
-                {c.por_que}
+              <li key={i} className="rounded-md border-l-2 border-warning/60 bg-warning/5 py-1.5 pl-3 pr-2">
+                <p className="font-medium">
+                  {c.clausula} {c.referencia && <span className="font-normal text-muted-foreground">({c.referencia})</span>}
+                </p>
+                <p className="leading-relaxed text-muted-foreground">{c.por_que}</p>
               </li>
             ))}
           </ul>
-          {f.prazos.impugnacao && <p className="dica">Prazo para impugnar: {f.prazos.impugnacao}.</p>}
+          {f.prazos.impugnacao && <p className="text-xs text-muted-foreground">Prazo para impugnar: {f.prazos.impugnacao}.</p>}
         </section>
       )}
 
-      <Lista titulo="Perguntas para o pregoeiro" itens={f.perguntas_esclarecimento} />
-      <Lista titulo="Penalidades" itens={f.penalidades} />
+      <div className="grid gap-5 md:grid-cols-2">
+        <Lista titulo="Perguntas para o pregoeiro" itens={f.perguntas_esclarecimento} />
+        <Lista titulo="Penalidades" itens={f.penalidades} />
+      </div>
 
       {f.itens.length > 0 && (
-        <section className="ficha-secao">
-          <h4>Itens</h4>
-          <ul>
+        <section className="space-y-2">
+          <h4 className="text-sm font-semibold">Itens</h4>
+          <ul className="divide-y overflow-hidden rounded-md border bg-card">
             {f.itens.map((it, i) => (
-              <li key={i}>
-                {it.descricao}
-                {it.quantidade && <span className="dica"> · {it.quantidade}</span>}
-                {it.valor_estimado != null && <span className="num"> {formatarValor(it.valor_estimado)}</span>}
+              <li key={i} className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:items-baseline sm:gap-3">
+                <span className="min-w-0 flex-1">{it.descricao}</span>
+                {it.quantidade && <span className="text-xs text-muted-foreground">{it.quantidade}</span>}
+                {it.valor_estimado != null && (
+                  <span className="num shrink-0 font-medium">{formatarValor(it.valor_estimado)}</span>
+                )}
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      <p className="ficha-rodape">
+      <p className="border-t pt-3 text-xs text-muted-foreground">
         Lido em {formatarData(linha.gerado_em)}
         {linha.modelo ? ` por ${linha.modelo}` : ""}, a partir de:{" "}
         {linha.arquivos_lidos.map((a) => a.titulo).join("; ")}.
@@ -146,11 +168,11 @@ export default function FichaEdital({
 function Fato({ rotulo, valor, link }: { rotulo: string; valor: string | null | undefined; link?: string | null }) {
   if (!valor) return null;
   return (
-    <div>
-      <dt>{rotulo}</dt>
-      <dd>
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{rotulo}</dt>
+      <dd className="font-medium">
         {link ? (
-          <a href={link} target="_blank" rel="noreferrer">
+          <a href={link} target="_blank" rel="noreferrer" className="text-primary hover:underline dark:text-sidebar-primary">
             {valor}
           </a>
         ) : (
@@ -164,9 +186,9 @@ function Fato({ rotulo, valor, link }: { rotulo: string; valor: string | null | 
 function Lista({ titulo, itens }: { titulo: string; itens: string[] }) {
   if (!itens?.length) return null;
   return (
-    <section className="ficha-secao">
-      <h4>{titulo}</h4>
-      <ul>
+    <section className="space-y-1.5">
+      <h4 className="text-sm font-semibold">{titulo}</h4>
+      <ul className="list-disc space-y-1 pl-4 leading-relaxed marker:text-muted-foreground/60">
         {itens.map((x, i) => (
           <li key={i}>{x}</li>
         ))}

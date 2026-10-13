@@ -91,6 +91,8 @@ export interface DisputaRow {
   motivo_recusa: string | null;
   notas_cliente: string | null;
   notas_operador: string | null;
+  /** passos do guia da disputa já cumpridos (src/lib/guia.ts) */
+  guia?: import("./guia").GuiaMarcado;
   enviado_cliente_em: string | null;
   respondido_em: string | null;
   notificado_em: string | null;

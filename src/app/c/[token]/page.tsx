@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { db, type ClienteRow, type DisputaRow, type LicitacaoRow } from "@/lib/db";
 import Portal, { type CartaoPortal } from "@/components/Portal";
 import { DECLARACAO_APROVACAO } from "@/lib/etapas";
+import { limparObjeto } from "@/lib/formato";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,7 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
       id: d.id,
       status: d.status,
       resumo: d.analise_ia?.resumo_cliente || null,
-      objeto: d.licitacao.objeto ?? "",
+      objeto: limparObjeto(d.licitacao.objeto),
       orgao: d.licitacao.orgao_razao_social,
       local: [d.licitacao.municipio, d.licitacao.uf].filter(Boolean).join("/"),
       modalidade: d.licitacao.modalidade_nome,

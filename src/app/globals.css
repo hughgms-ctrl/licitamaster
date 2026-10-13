@@ -623,3 +623,27 @@ b { font-weight: 700; }
 .medidor-acima .medidor-ponto { background: var(--carimbo); box-shadow: 0 0 0 1px var(--carimbo); }
 .medidor-texto { font-size: 14px; color: var(--verde); font-weight: 500; }
 .medidor-acima .medidor-texto { color: var(--carimbo); }
+
+/* aviso no rodapé: resultado de ações que tiram o item da aba atual */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 14px 14px 18px;
+  background: var(--folha);
+  border: 1px solid var(--linha);
+  border-left: 4px solid var(--verde);
+  border-radius: var(--r-painel);
+  box-shadow: 0 8px 28px rgba(22, 34, 63, 0.18);
+  z-index: 50;
+  animation: subir 0.2s ease-out;
+}
+.toast-erro { border-left-color: var(--carimbo); }
+.toast-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.toast-titulo { font-size: 12.5px; color: var(--tinta-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes subir { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }

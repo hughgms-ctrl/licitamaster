@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import type { AnaliseIA, DisputaCompleta, StatusDisputa } from "@/lib/db";
 import { ROTULO_STATUS, TRANSICOES_OPERADOR } from "@/lib/etapas";
-import { formatarData, formatarValor } from "@/lib/formato";
+import { formatarData, formatarValor, limparObjeto } from "@/lib/formato";
 import { analisar, enviarAoCliente, mudarStatus, salvarNotas, type Saida } from "@/app/acoes";
 import CopiarLink from "./CopiarLink";
 
@@ -92,6 +92,12 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
       return texto.includes(termo);
     });
   }, [disputas, aba, cliente, busca]);
+
+  // Resultado de ações que tiram a licitação da aba atual (enviar, mudar de
+  // etapa). Não pode morar no item: o item some da lista no mesmo instante, e
+  // junto sumiria a mensagem — inclusive o link do portal quando o WhatsApp
+  // não saiu, que é a única forma de chegar ao cliente.
+  const [aviso, setAviso] = useState<(Saida & { titulo: string }) | null>(null);
 
   function atualizar(id: string, campos: Partial<DisputaCompleta>) {
     setDisputas((xs) => xs.map((d) => (d.id === id ? { ...d, ...campos } : d)));
@@ -195,17 +201,32 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
                       : null
                   }
                   atualizar={atualizar}
+                  avisar={setAviso}
                 />
               ))}
             </div>
           )}
         </section>
       </main>
+
+      {aviso && (
+        <div className={`toast ${aviso.ok ? "" : "toast-erro"}`} role="status">
+          <div className="toast-texto">
+            <p className="toast-titulo">{aviso.titulo}</p>
+            <p>{aviso.mensagem}</p>
+            {aviso.link && <CopiarLink link={aviso.link} />}
+          </div>
+          <button className="btn btn-discreto" onClick={() => setAviso(null)} aria-label="Fechar aviso">
+            Fechar
+          </button>
+        </div>
+      )}
     </>
   );
 }
 
 function Item({
+  avisar,
   d,
   agora,
   comOutro,
@@ -216,6 +237,7 @@ function Item({
   /** nome do outro cliente que já está com esta licitação, se houver */
   comOutro: string | null;
   atualizar: (id: string, campos: Partial<DisputaCompleta>) => void;
+  avisar: (a: Saida & { titulo: string }) => void;
 }) {
   const [pendente, iniciar] = useTransition();
   const [saida, setSaida] = useState<Saida | null>(null);
@@ -258,7 +280,7 @@ function Item({
           <span className="chip-cliente">{nomeCliente}</span>
         </div>
 
-        <p className="lic-objeto">{l.objeto}</p>
+        <p className="lic-objeto">{limparObjeto(l.objeto)}</p>
 
         <dl className="fatos">
           <div>
@@ -332,7 +354,10 @@ function Item({
               onClick={() =>
                 rodar(
                   () => enviarAoCliente(d.id),
-                  () => atualizar(d.id, { status: "aguardando_cliente" })
+                  (s) => {
+                    avisar({ ...s, titulo: limparObjeto(l.objeto).slice(0, 90) });
+                    atualizar(d.id, { status: "aguardando_cliente" });
+                  }
                 )
               }
             >
@@ -385,7 +410,20 @@ function Item({
                   )
                 )
                   return;
-                rodar(() => mudarStatus(d.id, para), () => atualizar(d.id, { status: para }));
+                rodar(
+                  () => mudarStatus(d.id, para),
+                  () => {
+                    avisar({
+                      ok: true,
+                      mensagem:
+                        para === "sugerida"
+                          ? "Voltou para a triagem."
+                          : `Movida para "${ROTULO_STATUS[para]}".`,
+                      titulo: limparObjeto(l.objeto).slice(0, 90),
+                    });
+                    atualizar(d.id, { status: para });
+                  }
+                );
               }}
             >
               {d.status === "aguardando_cliente" && para === "sugerida"

@@ -31,3 +31,12 @@ export function tempoRestante(iso: string | null | undefined, agora = Date.now()
   const dias = Math.floor(horas / 24);
   return dias === 1 ? "falta 1 dia" : `faltam ${dias} dias`;
 }
+
+/**
+ * Tira o prefixo de sistema que alguns portais colam no objeto, como
+ * "[Portal de Compras Públicas] - ". É ruído na leitura e empurra o que
+ * importa para fora das três linhas visíveis.
+ */
+export function limparObjeto(objeto: string | null | undefined): string {
+  return (objeto ?? "").replace(/^\s*\[[^\]]{2,60}\]\s*[-–—:]?\s*/, "").trim();
+}

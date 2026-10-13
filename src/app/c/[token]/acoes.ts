@@ -9,6 +9,7 @@ import { DECLARACAO_APROVACAO } from "@/lib/etapas";
 import * as cofre from "@/lib/cofre";
 import { registrarEvento } from "@/lib/disputas";
 import type { SaidaCofre } from "@/components/Cofre";
+import { ITENS_MANUAIS, type Preparo } from "@/lib/preparo";
 
 /**
  * Ações do portal do cliente. A autenticação é o token na URL — então TODA
@@ -150,4 +151,39 @@ export async function ptLink(token: string, documentoId: string) {
   const cliente = await clientePorToken(token);
   if (!cliente) throw new Error("Link inválido ou expirado.");
   return cofre.linkArquivo(cliente.id, documentoId);
+}
+
+// ── Preparação pelo portal ───────────────────────────────────────
+// O cliente avisa que fez a parte dele (ex: subiu a conta gov.br). Vira
+// "cliente diz que fez": quem confere e marca como feito é a equipe.
+
+export async function ptInformarPreparo(token: string, item: string, nota: string): Promise<SaidaPortal> {
+  const cliente = await clientePorToken(token);
+  if (!cliente) return { ok: false, mensagem: "Link inválido ou expirado." };
+  const def = ITENS_MANUAIS.find((i) => i.id === item);
+  if (!def || !def.instrucao) return { ok: false, mensagem: "Item desconhecido." };
+
+  const { data, error } = await db().from("clientes").select("preparo").eq("id", cliente.id).single();
+  if (error) return { ok: false, mensagem: "Não deu para salvar agora. Tente de novo em instantes." };
+  const preparo = { ...((data.preparo as Preparo) ?? {}) };
+  if (preparo[item]?.status === "feito") return { ok: true, mensagem: "Esse já está conferido por nós." };
+  preparo[item] = {
+    status: "cliente_informou",
+    nota: nota.trim().slice(0, 500) || null,
+    em: new Date().toISOString(),
+    por: "cliente",
+  };
+  const { error: e2 } = await db().from("clientes").update({ preparo }).eq("id", cliente.id);
+  if (e2) return { ok: false, mensagem: "Não deu para salvar agora. Tente de novo em instantes." };
+
+  await registrarEvento({ cliente_id: cliente.id, ator: "cliente", tipo: "preparo_informado", dados: { item } });
+  const operador = process.env.ALERTA_WHATSAPP_NUMERO;
+  if (operador) {
+    await enviarWhatsApp(
+      operador,
+      `✅ *${cliente.nome_fantasia || cliente.razao_social}* avisou pelo portal que concluiu: ${def.rotulo}. Confira na mesa.`
+    );
+  }
+  revalidatePath(`/c/${token}`);
+  return { ok: true, mensagem: "Obrigado! Vamos conferir e avisamos se faltar algo." };
 }

@@ -15,6 +15,8 @@ import Filtros from "@/components/Filtros";
 import CopiarLink from "@/components/CopiarLink";
 import { regenerarLink, salvarCliente } from "../acoes";
 import Cofre from "@/components/Cofre";
+import Preparo from "@/components/Preparo";
+import { progressoPreparo } from "@/lib/preparo";
 import { listar as listarCofre } from "@/lib/cofre";
 import { opApagar, opAtualizar, opLink, opPedirUpload, opRegistrar } from "../acoes-cofre";
 
@@ -48,6 +50,7 @@ export default async function Cliente({ params }: { params: Promise<{ id: string
   // Abas montadas o tempo todo: trocar de aba não pode jogar fora um perfil
   // em edição nem um cadastro pela metade.
   const conteudo = "mt-5 data-[state=inactive]:hidden";
+  const preparo = progressoPreparo(cliente.preparo, documentos);
 
   return (
     <>
@@ -68,13 +71,22 @@ export default async function Cliente({ params }: { params: Promise<{ id: string
               {cliente.porte}, CNPJ {formatarCnpj(cliente.cnpj)}
             </span>
             <StatusDot tom={cliente.ativo ? "sucesso" : "neutro"}>{cliente.ativo ? "Ativo" : "Desligado"}</StatusDot>
+            <StatusDot tom={preparo.pronto ? "sucesso" : preparo.aConferir ? "alerta" : "perigo"}>
+              {preparo.pronto ? "Pronto para disputar" : `Preparação ${preparo.prontos}/${preparo.total}`}
+            </StatusDot>
           </span>
         }
       />
 
-      <Tabs defaultValue="perfis">
+      <Tabs defaultValue={preparo.pronto ? "perfis" : "preparo"}>
         <div className="-mx-1 overflow-x-auto px-1">
           <TabsList>
+            <TabsTrigger value="preparo">
+              Preparação{" "}
+              <span className={preparo.pronto ? "num text-xs text-success" : "num text-xs text-muted-foreground"}>
+                {preparo.prontos}/{preparo.total}
+              </span>
+            </TabsTrigger>
             <TabsTrigger value="perfis">
               Perfis de busca <span className="num text-xs text-muted-foreground">{nPerfis}</span>
             </TabsTrigger>
@@ -84,6 +96,10 @@ export default async function Cliente({ params }: { params: Promise<{ id: string
             <TabsTrigger value="cadastro">Cadastro e portal</TabsTrigger>
           </TabsList>
         </div>
+
+        <TabsContent value="preparo" forceMount className={conteudo}>
+          <Preparo clienteId={id} preparo={cliente.preparo ?? {}} documentos={documentos} />
+        </TabsContent>
 
         <TabsContent value="perfis" forceMount className={conteudo}>
           <Filtros

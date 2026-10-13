@@ -48,8 +48,10 @@ export default function Portal({
   cartoes: iniciais,
   declaracao,
   cofre,
+  preparo,
 }: {
   cofre?: React.ReactNode;
+  preparo?: React.ReactNode;
   token: string;
   empresa: string;
   contato: string | null;
@@ -86,6 +88,8 @@ export default function Portal({
       </header>
 
       <div className="space-y-8">
+        {preparo}
+
         {decidir.length > 0 && (
           <Secao titulo="Para você decidir" n={decidir.length}>
             {decidir.map((c) => (

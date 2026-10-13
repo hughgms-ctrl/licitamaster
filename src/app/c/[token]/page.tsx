@@ -6,6 +6,8 @@ import { DECLARACAO_APROVACAO } from "@/lib/etapas";
 import { limparObjeto } from "@/lib/formato";
 import { listar as listarCofre } from "@/lib/cofre";
 import Cofre from "@/components/Cofre";
+import PreparoPortal from "@/components/PreparoPortal";
+import type { Preparo } from "@/lib/preparo";
 import { ptLink, ptPedirUpload, ptRegistrar } from "./acoes";
 
 export const dynamic = "force-dynamic";
@@ -78,6 +80,11 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
     })
   );
 
+  const documentos = await listarCofre(cliente.id);
+  // Consulta à parte: se a coluna ainda não existir no banco, o portal abre
+  // sem a seção de preparação em vez de cair.
+  const { data: prep } = await supabase.from("clientes").select("preparo").eq("id", cliente.id).maybeSingle();
+
   return (
     <Portal
       token={token}
@@ -85,9 +92,10 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
       contato={cliente.contato_nome}
       cartoes={cartoes}
       declaracao={DECLARACAO_APROVACAO}
+      preparo={<PreparoPortal token={token} preparo={(prep?.preparo as Preparo | undefined) ?? {}} documentos={documentos} />}
       cofre={
         <Cofre
-          documentos={await listarCofre(cliente.id)}
+          documentos={documentos}
           modo="cliente"
           pedirUpload={ptPedirUpload.bind(null, token)}
           registrar={ptRegistrar.bind(null, token)}

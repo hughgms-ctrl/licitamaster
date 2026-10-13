@@ -29,6 +29,8 @@ export interface ClienteRow {
   contexto: string;
   ativo: boolean;
   token_portal: string;
+  /** situação dos itens de preparação (src/lib/preparo.ts) */
+  preparo: import("./preparo").Preparo;
   created_at: string;
 }
 

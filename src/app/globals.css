@@ -186,7 +186,8 @@ b { font-weight: 700; }
   text-align: center;
 }
 .aba[aria-selected="true"] .aba-n { background: var(--tinta); color: var(--folha); }
-.coleta { margin-left: auto; font-size: 13px; color: var(--tinta-3); white-space: nowrap; }
+.btn-buscar { margin-left: auto; white-space: nowrap; padding: 5px 12px; }
+.coleta { font-size: 13px; color: var(--tinta-3); white-space: nowrap; }
 .coleta-parada { color: var(--carimbo); font-weight: 600; }
 
 /* ── layout ────────────────────────────────────────────────── */

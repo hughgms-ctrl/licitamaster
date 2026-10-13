@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { procurarAgora } from "@/app/filtros/acoes";
 import type { AnaliseIA, DisputaCompleta, StatusDisputa } from "@/lib/db";
 import { ROTULO_STATUS, TRANSICOES_OPERADOR } from "@/lib/etapas";
 import { formatarData, formatarValor, limparObjeto } from "@/lib/formato";
@@ -63,6 +65,11 @@ interface Props {
 
 export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaColeta, fichas, cofres }: Props) {
   const [disputas, setDisputas] = useState(iniciais);
+  // Depois de "Buscar agora" a página recarrega os dados do servidor; sem
+  // isto a lista continuaria mostrando o estado de antes da busca.
+  useEffect(() => setDisputas(iniciais), [iniciais]);
+  const router = useRouter();
+  const [buscando, setBuscando] = useState(false);
   const [aba, setAba] = useState("triagem");
   const [cliente, setCliente] = useState<string>("todos");
   const [busca, setBusca] = useState("");
@@ -132,6 +139,24 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
             </button>
           ))}
         </div>
+        <button
+          className="btn btn-buscar"
+          disabled={buscando}
+          onClick={async () => {
+            setBuscando(true);
+            try {
+              const r = await procurarAgora();
+              setAviso({ ok: r.ok, mensagem: r.mensagem, titulo: "Busca no PNCP" });
+              router.refresh();
+            } catch (e) {
+              setAviso({ ok: false, mensagem: (e as Error).message, titulo: "Busca no PNCP" });
+            } finally {
+              setBuscando(false);
+            }
+          }}
+        >
+          {buscando ? "Buscando no PNCP…" : "Buscar agora"}
+        </button>
         <p className={`coleta ${coletaParada ? "coleta-parada" : ""}`}>
           {ultimaColeta?.finalizado_em
             ? `Última coleta ${formatarData(ultimaColeta.finalizado_em)}`

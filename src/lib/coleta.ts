@@ -476,7 +476,6 @@ async function gravarPagina(
     porCliente.set(cliId, (porCliente.get(cliId) ?? 0) + 1);
 
     const cand = candidatos.get(licId)!;
-    const match = cand.porCliente.get(cliId)!;
     const retificou = mudouPor.get(licId) === true;
     const vivo = STATUS_VIVOS.has(d.status as string);
 
@@ -490,12 +489,11 @@ async function gravarPagina(
       });
     }
 
-    // Alerta: sugestão nova acima do corte alto, ou retificação de edital
-    // numa disputa que ainda está andando (essa sempre, qualquer score — é
-    // a forma clássica de perder uma disputa sem perceber).
-    const nova = !existente?.notificado_em && d.status === "sugerida" &&
-      match.resultado.score >= match.perfil.score_alerta;
-    if (nova || (retificou && vivo)) {
+    // Na hora, só retificação de edital numa disputa que ainda está andando
+    // (qualquer score — é a forma clássica de perder uma disputa sem
+    // perceber). Sugestão nova NÃO avisa aqui: vai no resumo das 8h, 13h e
+    // 18h (lib/resumo.ts), que junta tudo o que entrou desde o anterior.
+    if (retificou && vivo && d.status !== "sugerida") {
       alertas.push({
         disputaId: d.id as string,
         clienteId: cliId,

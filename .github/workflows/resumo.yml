@@ -1,0 +1,35 @@
+name: Resumo no WhatsApp
+
+# Junta as sugestões novas desde o último resumo numa mensagem só, em vez de
+# um aviso por coleta. Roda 20 min depois da coleta do mesmo horário para já
+# incluir o que ela trouxe. Retificação de edital em disputa ativa não espera
+# por isto: a própria coleta avisa na hora.
+on:
+  schedule:
+    # 8h, 13h e 18h de Brasília nos dias úteis (UTC-3)
+    - cron: "20 11,16,21 * * 1-5"
+    # 18h de Brasília no fim de semana
+    - cron: "20 21 * * 0,6"
+  workflow_dispatch:
+
+jobs:
+  resumo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar /api/resumo
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -uo pipefail
+          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Faltam os secrets APP_URL e/ou CRON_SECRET no repositório."
+            exit 1
+          fi
+          corpo=$(curl -sS --max-time 90 -w '\n%{http_code}' \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL%/}/api/resumo")
+          http=$(printf '%s' "$corpo" | tail -n1)
+          echo "HTTP $http"
+          printf '%s' "$corpo" | sed '$d'
+          [ "$http" = "200" ] || { echo "::error::O resumo falhou (HTTP $http)."; exit 1; }

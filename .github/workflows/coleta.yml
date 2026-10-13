@@ -9,11 +9,14 @@ name: Coleta PNCP
 # é falha — é o desenho.
 on:
   schedule:
-    # de hora em hora. Repositório privado gasta minutos de Actions e o
-    # GitHub arredonda para 1 minuto por execução: 24/dia = ~720 min/mês,
-    # dentro dos 2.000 gratuitos. Não aumente muito a frequência sem olhar
-    # a cota — ou deixe o repositório público, que aí é ilimitado.
-    - cron: "0 * * * *"
+    # Horários em UTC (Brasília = UTC-3). O GitHub pode atrasar alguns minutos.
+    # Dias úteis, de hora em hora das 7h às 20h de Brasília…
+    - cron: "0 10-23 * * 1-5"
+    # …e às 21h de Brasília (00h UTC do dia seguinte)
+    - cron: "0 0 * * 2-6"
+    # Fim de semana: 9h, 13h e 18h de Brasília. Pouco órgão publica, mas
+    # retificação de edital no sábado acontece.
+    - cron: "0 12,16,21 * * 0,6"
   # permite disparar à mão pela aba Actions
   workflow_dispatch:
 

@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { exigirOperador } from "@/lib/sessao";
+import { exigirAdmin, exigirOperador } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { removerConfigIA, salvarConfigIA, testarChave, type Provedor } from "@/lib/config-ia";
 
 export interface SaidaConfig {
@@ -36,5 +37,27 @@ export async function salvarIA(_: SaidaConfig | null, form: FormData): Promise<S
 export async function removerIA(): Promise<void> {
   await exigirOperador();
   await removerConfigIA();
+  revalidatePath("/configuracoes");
+}
+
+// ── Equipe ───────────────────────────────────────────────────────
+
+export async function liberarEmail(_: SaidaConfig | null, form: FormData): Promise<SaidaConfig> {
+  const admin = await exigirAdmin();
+  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const papel = form.get("papel") === "admin" ? "admin" : "operador";
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, mensagem: "Informe um e-mail válido." };
+  const { error } = await db()
+    .from("operadores")
+    .upsert({ email, papel, liberado_por: admin.email }, { onConflict: "email" });
+  if (error) return { ok: false, mensagem: error.message };
+  revalidatePath("/configuracoes");
+  return { ok: true, mensagem: `${email} liberado. Agora a pessoa cria a conta em "Criar conta" com este e-mail.` };
+}
+
+export async function removerOperador(email: string): Promise<void> {
+  const admin = await exigirAdmin();
+  if (email === admin.email) throw new Error("Você não pode remover a si mesmo.");
+  await db().from("operadores").delete().eq("email", email);
   revalidatePath("/configuracoes");
 }

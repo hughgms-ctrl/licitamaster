@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { executarColeta } from "@/lib/coleta";
-import { exigirOperador } from "@/lib/sessao";
+import { exigirOperador } from "@/lib/auth";
 import { lerConfigIA } from "@/lib/config-ia";
 import { amostrarObjetos } from "@/lib/amostra";
 import { sugerirTermos, type SugestaoTermos } from "@/lib/ai";

@@ -1,5 +1,8 @@
 import Topo from "@/components/Topo";
+import { exigirOperadorPagina } from "@/lib/auth";
 import FormIA from "@/components/FormIA";
+import Equipe from "@/components/Equipe";
+import { db } from "@/lib/db";
 import { MODELOS_ANTHROPIC, MODELO_PADRAO, resumoConfigIA } from "@/lib/config-ia";
 import { formatarData } from "@/lib/formato";
 import { removerIA } from "./acoes";
@@ -7,6 +10,7 @@ import { removerIA } from "./acoes";
 export const dynamic = "force-dynamic";
 
 export default async function Configuracoes() {
+  const eu = await exigirOperadorPagina();
   let atual = null;
   let falha: string | null = null;
   try {
@@ -79,6 +83,16 @@ export default async function Configuracoes() {
               </>
             )}
           </div>
+          {eu.papel === "admin" && (
+            <Equipe
+              eu={eu.email}
+              membros={((await db().from("operadores").select("email, nome, papel").order("created_at")).data ?? []) as {
+                email: string;
+                nome: string | null;
+                papel: "admin" | "operador";
+              }[]}
+            />
+          )}
           <div className="editor-secao">
             <h3 className="editor-titulo">Como a chave é guardada</h3>
             <p className="dica">

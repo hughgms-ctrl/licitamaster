@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { exigirOperadorPagina } from "@/lib/auth";
 import { db, type ClienteRow } from "@/lib/db";
 import type { Perfil } from "@/lib/scoring";
 import { urlPortal } from "@/lib/disputas";
@@ -15,6 +16,7 @@ import { opApagar, opAtualizar, opLink, opPedirUpload, opRegistrar } from "../ac
 export const dynamic = "force-dynamic";
 
 export default async function Cliente({ params }: { params: Promise<{ id: string }> }) {
+  await exigirOperadorPagina();
   const { id } = await params;
   const supabase = db();
 

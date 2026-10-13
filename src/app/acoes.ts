@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db, SELECT_DISPUTA_COMPLETA, type ClienteRow, type DisputaCompleta, type StatusDisputa } from "@/lib/db";
-import { exigirOperador } from "@/lib/sessao";
+import { exigirOperador } from "@/lib/auth";
 import { analisarLicitacao, lerEdital } from "@/lib/ai";
 import { reunirPDFs } from "@/lib/edital";
 import { lerConfigIA } from "@/lib/config-ia";

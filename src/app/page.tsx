@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { exigirOperadorPagina } from "@/lib/auth";
 import { db, SELECT_DISPUTA_COMPLETA, type DisputaCompleta } from "@/lib/db";
 import { STATUS_EXCLUSIVOS } from "@/lib/etapas";
 import Topo from "@/components/Topo";
@@ -24,6 +25,7 @@ const EM_ANDAMENTO = [
 const ENCERRADOS = ["ganhou", "perdeu", "desistiu", "descartada"];
 
 export default async function Home() {
+  await exigirOperadorPagina();
   let sugeridas: DisputaCompleta[] = [];
   let andamento: DisputaCompleta[] = [];
   let encerradas: DisputaCompleta[] = [];

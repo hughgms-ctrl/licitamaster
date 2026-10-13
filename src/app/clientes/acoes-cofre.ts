@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { exigirOperador } from "@/lib/sessao";
+import { exigirOperador } from "@/lib/auth";
 import { registrarEvento } from "@/lib/disputas";
 import * as cofre from "@/lib/cofre";
 import type { SaidaCofre } from "@/components/Cofre";

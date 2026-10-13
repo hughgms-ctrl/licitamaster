@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { db, type StatusDisputa } from "./db";
+import { operadorAtual } from "./auth";
 
 export { TRANSICOES_OPERADOR, ROTULO_STATUS, STATUS_EXCLUSIVOS } from "./etapas";
 
@@ -38,9 +39,11 @@ export async function registrarEvento(ev: {
   dados?: Record<string, unknown>;
 }) {
   const origem = await origemRequisicao();
+  // quem da equipe fez: a auditoria guarda a pessoa, não só "operador"
+  const operador = ev.ator === "operador" ? (await operadorAtual())?.email : undefined;
   const { error } = await db()
     .from("eventos")
-    .insert({ ...ev, dados: ev.dados ?? {}, ...origem });
+    .insert({ ...ev, dados: { ...(ev.dados ?? {}), ...(operador ? { operador } : {}) }, ...origem });
   if (error) throw new Error(`Não deu para registrar a auditoria: ${error.message}`);
 }
 
@@ -67,7 +70,10 @@ export async function moverDisputa(opts: {
     p_para: opts.para,
     p_ator: opts.ator,
     p_tipo: opts.tipo,
-    p_dados: opts.dados ?? {},
+    p_dados: {
+      ...(opts.dados ?? {}),
+      ...(opts.ator === "operador" ? { operador: (await operadorAtual())?.email ?? null } : {}),
+    },
     p_ip: origem.ip,
     p_user_agent: origem.user_agent,
     p_cliente: opts.clienteId ?? null,

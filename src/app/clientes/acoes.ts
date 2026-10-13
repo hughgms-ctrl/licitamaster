@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db, type Porte } from "@/lib/db";
-import { exigirOperador } from "@/lib/sessao";
+import { exigirOperador } from "@/lib/auth";
 import { registrarEvento } from "@/lib/disputas";
 
 const PORTES: Porte[] = ["MEI", "ME", "EPP", "demais"];

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { sair } from "@/app/entrar/acoes";
+import { operadorAtual } from "@/lib/auth";
 
 const MARCA = "Licitação Master";
 
@@ -8,7 +9,7 @@ const MARCA = "Licitação Master";
  * página tem título próprio (clientes, um cliente), ele aparece abaixo da
  * barra, como título da página — não espremido ao lado da marca.
  */
-export default function Topo({
+export default async function Topo({
   titulo,
   sub,
   atual,
@@ -17,6 +18,7 @@ export default function Topo({
   sub?: string;
   atual: "mesa" | "clientes" | "configuracoes";
 }) {
+  const eu = await operadorAtual();
   return (
     <>
       <header className="topo">
@@ -44,6 +46,7 @@ export default function Topo({
           </Link>
         </nav>
         <form action={sair} className="topo-sair">
+          {eu && <span className="topo-usuario">{eu.nome ?? eu.email}</span>}
           <button className="btn btn-discreto">Sair</button>
         </form>
       </header>

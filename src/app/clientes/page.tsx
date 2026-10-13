@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { exigirOperadorPagina } from "@/lib/auth";
 import { db, type ClienteRow } from "@/lib/db";
 import { formatarCnpj } from "@/lib/formato";
 import Topo from "@/components/Topo";
@@ -8,6 +9,7 @@ import { criarCliente } from "./acoes";
 export const dynamic = "force-dynamic";
 
 export default async function Clientes() {
+  await exigirOperadorPagina();
   const supabase = db();
   const [{ data: clientes, error }, { data: disputas }] = await Promise.all([
     supabase.from("clientes").select("*").order("razao_social"),

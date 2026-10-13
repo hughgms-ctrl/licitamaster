@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { operadorAtual } from "@/lib/auth";
+
+const negado = () => NextResponse.json({ erro: "sem acesso" }, { status: 401 });
 import { FILTROS_PRONTOS, materializar } from "@/lib/filtros-prontos";
 
 export const dynamic = "force-dynamic";
 
 /** Lista os perfis de um cliente, do mais antigo para o mais novo. */
 export async function GET(req: NextRequest) {
+  if (!(await operadorAtual())) return negado();
   const clienteId = req.nextUrl.searchParams.get("cliente_id");
   if (!clienteId) return NextResponse.json({ erro: "informe cliente_id" }, { status: 400 });
   const { data, error } = await db()
@@ -19,6 +23,7 @@ export async function GET(req: NextRequest) {
 
 /** Salva um perfil inteiro (cria se não tiver id). */
 export async function PUT(req: NextRequest) {
+  if (!(await operadorAtual())) return negado();
   const body = await req.json();
 
   const erro = validar(body);
@@ -35,6 +40,7 @@ export async function PUT(req: NextRequest) {
  * duplicar nem sobrescrever o que você já ajustou à mão.
  */
 export async function POST(req: NextRequest) {
+  if (!(await operadorAtual())) return negado();
   const clienteId = req.nextUrl.searchParams.get("cliente_id");
   if (!clienteId) return NextResponse.json({ erro: "informe cliente_id" }, { status: 400 });
   const supabase = db();
@@ -69,6 +75,7 @@ export async function POST(req: NextRequest) {
  * não perde histórico por desistir de um filtro.
  */
 export async function DELETE(req: NextRequest) {
+  if (!(await operadorAtual())) return negado();
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ erro: "informe o id do filtro" }, { status: 400 });
 

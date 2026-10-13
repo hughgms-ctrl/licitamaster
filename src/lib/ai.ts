@@ -1,95 +1,110 @@
+import Anthropic from "@anthropic-ai/sdk";
 import type { AnaliseIA, ClienteRow, LicitacaoRow } from "./db";
 import type { AmostraObjeto } from "./amostra";
 import { normalizar, type TermoPositivo } from "./scoring";
+import { lerConfigIA } from "./config-ia";
+
+/** Um PDF para a IA ler junto com o prompt (edital, termo de referência…). */
+export interface DocumentoPDF {
+  titulo: string;
+  base64: string;
+}
+
+export class IANaoConfigurada extends Error {
+  constructor() {
+    super("Nenhuma chave de IA configurada. Cadastre uma em Configurações.");
+  }
+}
 
 /**
- * Provedor de IA. `openai` é o padrão; `anthropic` continua funcionando.
- *
- * Os dois caminhos falam por fetch cru, sem SDK, porque o projeto é de
- * propósito só Next + supabase-js. Trocar de provedor é uma variável de
- * ambiente, não um refactor.
+ * Modelos que aceitam o fallback do servidor: se o modelo recusar por
+ * política de segurança (falso positivo acontece com texto jurídico), a
+ * própria API refaz a chamada noutro modelo, na mesma requisição.
  */
-type Provedor = "openai" | "anthropic";
-const PROVEDOR: Provedor = process.env.AI_PROVIDER === "anthropic" ? "anthropic" : "openai";
+const COM_FALLBACK = new Set(["claude-opus-5-5", "claude-sonnet-5-5"]);
 
 /**
- * Modelo padrão de cada provedor. Sobrescreva com OPENAI_MODEL /
- * ANTHROPIC_MODEL — o catálogo dos dois muda com frequência e o que a sua
- * conta enxerga depende do plano.
+ * Uma chamada ao modelo configurado (painel ou ambiente), devolvendo só o
+ * texto. PDFs vão como documentos nativos: os dois provedores leem o
+ * arquivo inteiro, inclusive tabelas e páginas escaneadas.
  */
-const MODELO_PADRAO: Record<Provedor, string> = {
-  openai: "gpt-4o",
-  anthropic: "claude-opus-5-5",
-};
-
-/** Uma chamada ao modelo, devolvendo só o texto da resposta. */
 async function chamarIA(opts: {
   prompt: string;
   maxTokens: number;
   esforco?: "low" | "medium" | "high";
   timeoutMs?: number;
+  pdfs?: DocumentoPDF[];
 }): Promise<string> {
-  const timeout = AbortSignal.timeout(opts.timeoutMs ?? 120_000);
+  const cfg = await lerConfigIA();
+  if (!cfg) throw new IANaoConfigurada();
 
-  if (PROVEDOR === "openai") {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error("OPENAI_API_KEY não configurada.");
-
+  if (cfg.provedor === "openai") {
+    const conteudo = [
+      ...(opts.pdfs ?? []).map((p) => ({
+        type: "file",
+        file: { filename: `${p.titulo}.pdf`, file_data: `data:application/pdf;base64,${p.base64}` },
+      })),
+      { type: "text", text: opts.prompt },
+    ];
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL ?? MODELO_PADRAO.openai,
-        messages: [{ role: "user", content: opts.prompt }],
-        // Garante JSON de volta em vez de texto com cerca de markdown. Exige
-        // que a palavra "json" apareça no prompt — e aparece, todos eles
-        // pedem JSON explicitamente.
+        model: cfg.modelo,
+        messages: [{ role: "user", content: opts.pdfs?.length ? conteudo : opts.prompt }],
+        // JSON garantido; exige a palavra "json" no prompt, e todos pedem.
         response_format: { type: "json_object" },
-        // Sem teto de tokens nem temperature de propósito: o nome do
-        // parâmetro de teto mudou entre gerações de modelo da OpenAI
-        // (max_tokens virou max_completion_tokens) e alguns modelos recusam
-        // temperature diferente do padrão. Corpo mínimo = compatível com
-        // qualquer modelo que a sua conta tenha.
+        // Sem teto de tokens nem temperature: o nome do parâmetro de teto
+        // muda entre gerações da OpenAI e alguns modelos recusam temperature.
       }),
-      signal: timeout,
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 300_000),
     });
-
     if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
     const data = await res.json();
     return data.choices?.[0]?.message?.content ?? "";
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY não configurada.");
+  const client = new Anthropic({ apiKey: cfg.apiKey, timeout: opts.timeoutMs ?? 300_000 });
+  const conteudo: Anthropic.Beta.BetaContentBlockParam[] = [
+    // documentos antes do texto: o prompt fala SOBRE eles
+    ...(opts.pdfs ?? []).map(
+      (p): Anthropic.Beta.BetaContentBlockParam => ({
+        type: "document",
+        title: p.titulo,
+        source: { type: "base64", media_type: "application/pdf", data: p.base64 },
+      })
+    ),
+    { type: "text", text: opts.prompt },
+  ];
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: process.env.ANTHROPIC_MODEL ?? MODELO_PADRAO.anthropic,
-      max_tokens: opts.maxTokens,
-      // Pensamento adaptativo: o modelo decide sozinho quanto raciocinar.
-      thinking: { type: "adaptive" },
-      output_config: { effort: opts.esforco ?? "medium" },
-      messages: [{ role: "user", content: opts.prompt }],
-    }),
-    signal: timeout,
+  // Streaming + finalMessage: leitura de edital pode demorar minutos, e uma
+  // requisição longa sem stream estoura o tempo de HTTP.
+  const stream = client.beta.messages.stream({
+    model: cfg.modelo,
+    max_tokens: opts.maxTokens,
+    thinking: { type: "adaptive" },
+    // explícito: no Opus 5.5 o padrão é "medium", em outros é "high"
+    output_config: { effort: opts.esforco ?? "medium" },
+    messages: [{ role: "user", content: conteudo }],
+    ...(COM_FALLBACK.has(cfg.modelo)
+      ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
+      : {}),
   });
+  const msg = await stream.finalMessage();
 
-  if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
-
-  const data = await res.json();
-  // Com thinking ligado a resposta traz blocos de raciocínio junto; só o
-  // texto interessa.
-  return (data.content ?? [])
-    .filter((b: { type: string }) => b.type === "text")
-    .map((b: { text: string }) => b.text)
+  if (msg.stop_reason === "refusal") {
+    throw new Error("O modelo recusou a tarefa. Tente de novo ou troque o modelo em Configurações.");
+  }
+  if (msg.stop_reason === "max_tokens") {
+    throw new Error("A resposta da IA foi cortada no meio (limite de tamanho). Tente de novo.");
+  }
+  // Com thinking ligado vêm blocos de raciocínio junto; só o texto interessa.
+  return msg.content
+    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+    .map((b) => b.text)
     .join("");
 }
+
 
 /**
  * Barra fragmento de frase, que o modelo às vezes devolve como termo.

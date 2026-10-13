@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { executarColeta } from "@/lib/coleta";
 import { exigirOperador } from "@/lib/sessao";
+import { lerConfigIA } from "@/lib/config-ia";
 import { amostrarObjetos } from "@/lib/amostra";
 import { sugerirTermos, type SugestaoTermos } from "@/lib/ai";
 import type { TermoPositivo } from "@/lib/scoring";
@@ -111,15 +112,10 @@ export async function sugerirTermosAgora(entrada: {
   if (!entrada.descricao.trim()) {
     return { ok: false, mensagem: "Descreva o que você vende ou presta." };
   }
-  // A chave depende do provedor escolhido em AI_PROVIDER.
-  const usaAnthropic = process.env.AI_PROVIDER === "anthropic";
-  const temChave = usaAnthropic ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY;
-  if (!temChave) {
+  if (!(await lerConfigIA())) {
     return {
       ok: false,
-      mensagem: `Falta a ${
-        usaAnthropic ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY"
-      } no .env.local. Sem ela o assistente não roda — o resto do radar funciona normalmente.`,
+      mensagem: "Nenhuma chave de IA configurada. Cadastre uma em Configurações; o resto do sistema funciona sem ela.",
     };
   }
 

@@ -15,7 +15,7 @@ export default function Topo({
 }: {
   titulo: string;
   sub?: string;
-  atual: "mesa" | "clientes";
+  atual: "mesa" | "clientes" | "configuracoes";
 }) {
   return (
     <>
@@ -34,6 +34,13 @@ export default function Topo({
             href="/clientes"
           >
             Clientes
+          </Link>
+          <Link
+            className="nav-link"
+            aria-current={atual === "configuracoes" ? "page" : undefined}
+            href="/configuracoes"
+          >
+            Configurações
           </Link>
         </nav>
         <form action={sair} className="topo-sair">

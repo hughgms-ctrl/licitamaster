@@ -1,0 +1,3 @@
+# Configuração mínima para a integração Supabase ↔ GitHub encontrar as
+# migrations em supabase/migrations.
+project_id = "licitamaster"

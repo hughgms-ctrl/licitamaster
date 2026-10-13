@@ -12,6 +12,17 @@ import { createServerClient } from "@supabase/ssr";
  * server action (`exigirOperador`) — o middleware não é a única porta.
  */
 export async function middleware(req: NextRequest) {
+  // Link de e-mail do Auth que caiu na raiz (acontece quando o Supabase usa
+  // a Site URL em vez do redirect pedido): encaminha o código para o
+  // callback, que abre a sessão, em vez de jogar a pessoa na tela de entrada.
+  const code = req.nextUrl.searchParams.get("code");
+  if (code && req.nextUrl.pathname === "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/auth/callback";
+    url.search = `?code=${encodeURIComponent(code)}&next=/`;
+    return NextResponse.redirect(url);
+  }
+
   let res = NextResponse.next({ request: req });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;

@@ -148,8 +148,9 @@ export const FASES: Fase[] = [
       },
       {
         id: "resultado",
-        titulo: "Ver o resultado e registrar na mesa",
-        detalhe: "Aceito e habilitado: marque \"Ganhou\". Desclassificado: anote o motivo nas notas internas antes de marcar \"Perdeu\".",
+        titulo: "Registrar os lances e o resultado na mesa",
+        detalhe:
+          "Em \"Registrar lances\", anote o último lance do cliente, quem ganhou e por quanto, e os lances finais dos concorrentes. Depois marque \"Ganhou\" ou \"Perdeu\". Se foi desclassificado, escreva o motivo na observação.",
       },
     ],
   },

@@ -8,6 +8,7 @@ import { reunirPDFs } from "@/lib/edital";
 import { lerConfigIA } from "@/lib/config-ia";
 import type { FichaRow } from "@/lib/ficha";
 import { FASES, type GuiaMarcado } from "@/lib/guia";
+import type { ResultadoDisputa } from "@/lib/resultado";
 import { convidarCliente } from "@/lib/notify";
 import { moverDisputa, registrarEvento, TRANSICOES_OPERADOR, urlPortal } from "@/lib/disputas";
 
@@ -138,6 +139,54 @@ export async function salvarNotas(disputaId: string, notas: string): Promise<Sai
   await exigirOperador();
   const { error } = await db().from("disputas").update({ notas_operador: notas }).eq("id", disputaId);
   return error ? { ok: false, mensagem: error.message } : { ok: true, mensagem: "Notas salvas." };
+}
+
+/**
+ * Registra (ou corrige) o resultado da sessão: nosso lance, vencedor e
+ * concorrentes. Um registro por disputa; salvar de novo substitui.
+ */
+export async function salvarResultado(
+  disputaId: string,
+  r: Omit<ResultadoDisputa, "disputa_id" | "licitacao_id" | "registrado_por" | "updated_at">
+): Promise<Saida> {
+  const eu = await exigirOperador();
+  const d = await carregar(disputaId);
+  if (!d) return { ok: false, mensagem: "Disputa não encontrada." };
+
+  const valor = (n: number | null) => (n != null && Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null);
+  const inteiro = (n: number | null) => (n != null && Number.isInteger(n) && n >= 1 ? n : null);
+  const concorrentes = (r.concorrentes ?? [])
+    .filter((c) => c.nome?.trim() || c.lance)
+    .slice(0, 50)
+    .map((c) => ({ nome: (c.nome ?? "").trim().slice(0, 200), cnpj: c.cnpj?.replace(/\D/g, "") || null, lance: valor(c.lance) }));
+
+  const linha = {
+    disputa_id: disputaId,
+    licitacao_id: d.licitacao_id,
+    nosso_lance: valor(r.nosso_lance),
+    posicao: inteiro(r.posicao),
+    participantes: inteiro(r.participantes),
+    vencedor_nome: r.vencedor_nome?.trim().slice(0, 200) || null,
+    vencedor_lance: valor(r.vencedor_lance),
+    concorrentes,
+    observacao: r.observacao?.trim().slice(0, 2000) || null,
+    registrado_por: eu.email,
+    updated_at: new Date().toISOString(),
+  };
+  if (linha.posicao && linha.participantes && linha.posicao > linha.participantes) {
+    return { ok: false, mensagem: "A posição não pode ser maior que o número de participantes." };
+  }
+
+  const { error } = await db().from("resultados_disputa").upsert(linha, { onConflict: "disputa_id" });
+  if (error) return { ok: false, mensagem: error.message };
+  await registrarEvento({
+    disputa_id: disputaId,
+    cliente_id: d.cliente_id,
+    ator: "operador",
+    tipo: "resultado_registrado",
+    dados: { nosso_lance: linha.nosso_lance, vencedor_lance: linha.vencedor_lance, posicao: linha.posicao },
+  });
+  return { ok: true, mensagem: "Resultado registrado." };
 }
 
 /** Marca ou desmarca um passo do guia da disputa. */

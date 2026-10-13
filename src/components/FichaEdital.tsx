@@ -16,7 +16,8 @@ function dataDaSessao(texto: string | null): string | null {
 
 const ROTULO_ITEM: Record<ItemChecklist["situacao"], string> = {
   ok: "Pronto",
-  vence_logo: "Vence antes da sessão",
+  vence_logo: "Vence logo depois da sessão",
+  vence_antes: "Vence antes da sessão",
   vencido: "Vencido",
   falta: "Falta",
 };
@@ -24,6 +25,7 @@ const ROTULO_ITEM: Record<ItemChecklist["situacao"], string> = {
 const TOM_ITEM: Record<ItemChecklist["situacao"], Tom> = {
   ok: "sucesso",
   vence_logo: "alerta",
+  vence_antes: "perigo",
   vencido: "perigo",
   falta: "perigo",
 };
@@ -92,8 +94,16 @@ export default function FichaEdital({
           <ul className="divide-y overflow-hidden rounded-md border bg-card">
             {checklist.map((c, i) => (
               <li key={`${c.tipo}-${i}`} className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:items-center sm:gap-3">
-                <span className="w-44 shrink-0">
-                  <StatusDot tom={TOM_ITEM[c.situacao]}>{ROTULO_ITEM[c.situacao]}</StatusDot>
+                <span className="w-56 shrink-0">
+                  <StatusDot tom={TOM_ITEM[c.situacao]}>
+                    {ROTULO_ITEM[c.situacao]}
+                    {c.validade && c.situacao !== "ok" && (
+                      <span className="num font-normal text-muted-foreground">
+                        {" "}
+                        ({c.validade.split("-").reverse().slice(0, 2).join("/")})
+                      </span>
+                    )}
+                  </StatusDot>
                 </span>
                 <span className="min-w-0 flex-1">{c.rotulo}</span>
                 {c.detalhe && <span className="text-xs text-muted-foreground">{c.detalhe}</span>}

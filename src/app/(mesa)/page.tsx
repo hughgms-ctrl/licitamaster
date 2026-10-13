@@ -10,6 +10,7 @@ import { Building2, Plus } from "lucide-react";
 import Mesa from "@/components/Mesa";
 import type { FichaRow } from "@/lib/ficha";
 import type { DocumentoResumo } from "@/lib/documentos";
+import type { ResultadoDisputa } from "@/lib/resultado";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -37,6 +38,7 @@ export default async function Home() {
   let ultimaColeta: { finalizado_em: string | null; erro: string | null } | null = null;
   const fichas: Record<string, FichaRow> = {};
   const cofres: Record<string, DocumentoResumo[]> = {};
+  const resultados: Record<string, ResultadoDisputa> = {};
   let falha: string | null = null;
 
   try {
@@ -97,6 +99,16 @@ export default async function Home() {
         .order("created_at", { ascending: false }),
     ]);
     for (const f of (fs.data ?? []) as FichaRow[]) fichas[f.licitacao_id] = f;
+    // Resultados das sessões: só das disputas que já chegaram lá. Se a tabela
+    // ainda não existir no banco, a mesa abre sem eles.
+    const comSessao = [...andamento, ...encerradas]
+      .filter((d) => ["em_disputa", "ganhou", "perdeu", "desistiu"].includes(d.status))
+      .map((d) => d.id)
+      .slice(0, 300);
+    if (comSessao.length) {
+      const { data: rs } = await supabase.from("resultados_disputa").select("*").in("disputa_id", comSessao);
+      for (const r of (rs ?? []) as ResultadoDisputa[]) resultados[r.disputa_id] = r;
+    }
     for (const doc of (ds.data ?? []) as (DocumentoResumo & { cliente_id: string })[]) {
       (cofres[doc.cliente_id] ??= []).push(doc);
     }
@@ -157,6 +169,7 @@ export default async function Home() {
       ultimaColeta={ultimaColeta}
       fichas={fichas}
       cofres={cofres}
+      resultados={resultados}
     />
   );
 }

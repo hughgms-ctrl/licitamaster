@@ -1,4 +1,5 @@
 import { Marca } from "./Marca";
+import { SeletorTema } from "./SeletorTema";
 
 /** Moldura das telas de login: marca no topo, cartão no centro. */
 export function TelaEntrada({
@@ -14,6 +15,7 @@ export function TelaEntrada({
 }) {
   return (
     <main className="relative flex min-h-dvh flex-col items-center justify-center px-4 py-10">
+      <SeletorTema className="absolute right-4 top-4 z-10" />
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.10),transparent_70%)]"

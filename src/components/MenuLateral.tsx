@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { useTheme } from "next-themes";
-import { Building2, ChevronsUpDown, LayoutDashboard, LogOut, Menu, Moon, Settings, Sun } from "lucide-react";
+import { Building2, ChevronsUpDown, LayoutDashboard, LogOut, Menu, Settings } from "lucide-react";
 import { sair } from "@/app/entrar/acoes";
 import { cn } from "@/lib/utils";
 import { Marca } from "./Marca";
+import { SeletorTema } from "./SeletorTema";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
 import {
@@ -68,7 +68,8 @@ function Conteudo({ usuario, aoNavegar }: { usuario: Usuario | null; aoNavegar?:
         })}
       </nav>
 
-      <div className="border-t border-sidebar-border p-2">
+      <div className="space-y-2 border-t border-sidebar-border p-2">
+        <SeletorTema className="w-full" />
         <MenuUsuario usuario={usuario} />
       </div>
     </div>
@@ -76,7 +77,6 @@ function Conteudo({ usuario, aoNavegar }: { usuario: Usuario | null; aoNavegar?:
 }
 
 function MenuUsuario({ usuario }: { usuario: Usuario | null }) {
-  const { resolvedTheme, setTheme } = useTheme();
   const nome = usuario?.nome || usuario?.email || "Equipe";
   const iniciais = nome
     .split(/[\s@.]+/)
@@ -84,7 +84,6 @@ function MenuUsuario({ usuario }: { usuario: Usuario | null }) {
     .slice(0, 2)
     .map((p) => p[0]!.toUpperCase())
     .join("");
-  const escuro = resolvedTheme !== "light";
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex w-full items-center gap-2.5 rounded-md p-2 text-left text-sm transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent">
@@ -106,11 +105,6 @@ function MenuUsuario({ usuario }: { usuario: Usuario | null }) {
             <DropdownMenuSeparator />
           </>
         )}
-        <DropdownMenuItem onSelect={() => setTheme(escuro ? "light" : "dark")}>
-          {escuro ? <Sun /> : <Moon />}
-          {escuro ? "Tema claro" : "Tema escuro"}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
         <form action={sair}>
           <DropdownMenuItem asChild>
             <button type="submit" className="w-full">
@@ -137,9 +131,10 @@ export function MenuLateral({ usuario }: { usuario: Usuario | null }) {
         <Button variant="ghost" size="icon" aria-label="Abrir menu" onClick={() => setAberto(true)}>
           <Menu />
         </Button>
-        <Link href="/">
+        <Link href="/" className="min-w-0 flex-1">
           <Marca />
         </Link>
+        <SeletorTema compacto />
       </header>
       <Sheet open={aberto} onOpenChange={setAberto}>
         <SheetContent side="left" className="p-0">

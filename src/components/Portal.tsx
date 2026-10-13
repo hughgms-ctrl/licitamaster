@@ -7,6 +7,7 @@ import { responder, type SaidaPortal } from "@/app/c/[token]/acoes";
 import { ChevronDown, ExternalLink, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Marca } from "./Marca";
+import { SeletorTema } from "./SeletorTema";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -67,7 +68,10 @@ export default function Portal({
   return (
     <div className="mx-auto min-h-dvh w-full max-w-xl px-4 pb-16">
       <header className="space-y-5 pb-6 pt-6">
-        <Marca />
+        <div className="flex items-center justify-between gap-3">
+          <Marca />
+          <SeletorTema compacto />
+        </div>
         <div className="space-y-1.5">
           <p className="text-sm text-muted-foreground">{contato ? `Olá, ${contato.split(" ")[0]}` : "Olá"}</p>
           <h1 className="text-2xl font-semibold tracking-tight">{empresa}</h1>

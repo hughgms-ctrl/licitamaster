@@ -34,13 +34,13 @@ export const FASES: Fase[] = [
     titulo: "Antes da sessão",
     etapas: ["aprovada", "em_preparacao"],
     resumo:
-      "O cliente aprovou e deu o preço mínimo. Agora é ler o edital, deixar os documentos em dia e cadastrar a proposta no sistema antes do horário de abertura.",
+      "O cliente viu as exigências do edital, aprovou e deu o preço mínimo. Agora é conferir a ficha, deixar os documentos em dia e cadastrar a proposta no sistema antes do horário de abertura.",
     passos: [
       {
         id: "ler_edital",
-        titulo: "Ler o edital (ficha da IA)",
+        titulo: "Conferir a ficha do edital",
         detalhe:
-          "Use \"Ler edital\" na mesa. Confira data e hora da sessão, plataforma, modo de disputa, documentos exigidos, prazo de entrega e se é exclusiva para ME/EPP.",
+          "A IA leu o edital antes de você enviar ao cliente (\"Ficha do edital\" na mesa). Confira data e hora da sessão, plataforma, modo de disputa, documentos exigidos, prazo de entrega e se é exclusiva para ME/EPP. Se o edital foi retificado depois, leia de novo.",
         cuidado: "Leia também o Termo de Referência: é lá que ficam as exigências do produto ou serviço.",
       },
       {

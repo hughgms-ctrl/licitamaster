@@ -29,6 +29,21 @@ export interface CartaoPortal {
   encerramento: string | null;
   link: string | null;
   precoMinimo: number | null;
+  /** o que o edital exige, para o cliente decidir sabendo (só nas que esperam decisão) */
+  exigencias?: ExigenciasCliente | null;
+}
+
+export interface ExigenciasCliente {
+  /** documentos que faltam, vencidos ou que vencem antes da sessão */
+  documentos: { rotulo: string; situacao: "falta" | "vencido" | "vence_antes" }[];
+  /** quantos documentos exigidos já estão em dia no cofre */
+  documentosProntos: number;
+  tecnicas: string[];
+  visita: string | null;
+  amostra: string | null;
+  garantia: string | null;
+  entrega: string | null;
+  sessao: string | null;
 }
 
 /** Como o cliente lê cada etapa. Sem jargão de licitação. */
@@ -256,6 +271,8 @@ function Decisao({
         )}
       </dl>
 
+      {c.exigencias && <Exigencias e={c.exigencias} />}
+
       {modo === "inicio" && (
         <div className="grid grid-cols-2 gap-2">
           <Button size="lg" className="h-12" onClick={() => setModo("sim")}>
@@ -354,6 +371,67 @@ function Decisao({
         </a>
       )}
     </article>
+  );
+}
+
+const SITUACAO_DOC = { falta: "você ainda não enviou", vencido: "vencido", vence_antes: "vence antes da disputa" };
+
+/**
+ * O que o edital pede da empresa, em linguagem simples, antes do "Quero
+ * participar". A declaração que ele marca ao aprovar fala destas exigências.
+ */
+function Exigencias({ e }: { e: ExigenciasCliente }) {
+  const extras = [
+    e.entrega && `Prazo: ${e.entrega}`,
+    e.visita && `Visita ao local: ${e.visita}`,
+    e.amostra && `Amostra: ${e.amostra}`,
+    e.garantia && `Garantia: ${e.garantia}`,
+  ].filter((x): x is string => !!x);
+  if (!e.documentos.length && !e.tecnicas.length && !extras.length) return null;
+  return (
+    <section className="space-y-3 rounded-md border p-3">
+      <h3 className="text-sm font-semibold">O que vão pedir da sua empresa</h3>
+
+      {e.documentos.length > 0 ? (
+        <div className="space-y-1.5">
+          <StatusDot tom="perigo">
+            {e.documentos.length === 1 ? "1 documento pendente" : `${e.documentos.length} documentos pendentes`}
+          </StatusDot>
+          <ul className="list-disc space-y-0.5 pl-5 text-sm leading-relaxed marker:text-muted-foreground/60">
+            {e.documentos.map((d) => (
+              <li key={d.rotulo}>
+                {d.rotulo} <span className="text-muted-foreground">({SITUACAO_DOC[d.situacao]})</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Precisam estar em dia até a disputa{e.sessao ? ` (${e.sessao})` : ""}. Envie em &quot;Documentos da empresa&quot;, no fim
+            da página.
+          </p>
+        </div>
+      ) : (
+        e.documentosProntos > 0 && <StatusDot tom="sucesso">Documentos da empresa em dia para esta licitação</StatusDot>
+      )}
+
+      {e.tecnicas.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Comprovar experiência e qualificação</p>
+          <ul className="list-disc space-y-0.5 pl-5 text-sm leading-relaxed marker:text-muted-foreground/60">
+            {e.tecnicas.map((t, i) => (
+              <li key={i}>{t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {extras.length > 0 && (
+        <ul className="space-y-0.5 text-sm leading-relaxed text-muted-foreground">
+          {extras.map((x) => (
+            <li key={x}>{x}</li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

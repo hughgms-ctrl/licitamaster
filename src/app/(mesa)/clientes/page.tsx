@@ -4,14 +4,13 @@ import { db, type ClienteRow } from "@/lib/db";
 import { formatarCnpj } from "@/lib/formato";
 import type { DocumentoResumo } from "@/lib/documentos";
 import { progressoPreparo } from "@/lib/preparo";
-import { ChevronRight, Building2 } from "lucide-react";
+import { ChevronRight, Building2, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Cabecalho } from "@/components/Cabecalho";
 import { Aviso } from "@/components/ui/aviso";
 import { Vazio } from "@/components/ui/vazio";
 import { StatusDot } from "@/components/ui/status-dot";
 import { StatStrip } from "@/components/ui/stat-strip";
-import FormCliente from "@/components/FormCliente";
-import { criarCliente } from "./acoes";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +50,18 @@ export default async function Clientes() {
 
   return (
     <>
-      <Cabecalho titulo="Clientes" sub="As empresas em nome de quem você disputa." />
+      <Cabecalho
+        titulo="Clientes"
+        sub="As empresas em nome de quem você disputa."
+        acoes={
+          <Button asChild>
+            <Link href="/clientes/novo">
+              <Plus />
+              Novo cliente
+            </Link>
+          </Button>
+        }
+      />
       {lista.length > 0 && (
         <StatStrip
           className="mb-6"
@@ -63,8 +73,7 @@ export default async function Clientes() {
           ]}
         />
       )}
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]">
-        <section className="min-w-0 space-y-3">
+      <section className="space-y-3">
           {error && <Aviso tom="erro">{error.message}</Aviso>}
           {lista.length === 0 ? (
             <Vazio icone={Building2} titulo="Cadastre o primeiro cliente.">
@@ -72,6 +81,12 @@ export default async function Clientes() {
                 Depois do cadastro, monte o perfil de busca dele. É o perfil que diz à coleta quais
                 licitações procurar.
               </p>
+              <Button asChild size="sm">
+                <Link href="/clientes/novo">
+                  <Plus />
+                  Cadastrar cliente
+                </Link>
+              </Button>
             </Vazio>
           ) : (
             <div className="divide-y overflow-hidden rounded-lg border bg-card">
@@ -118,12 +133,7 @@ export default async function Clientes() {
               })}
             </div>
           )}
-        </section>
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold">Novo cliente</h2>
-          <FormCliente acao={criarCliente} rotulo="Cadastrar cliente" />
-        </section>
-      </div>
+      </section>
     </>
   );
 }

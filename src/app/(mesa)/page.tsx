@@ -126,7 +126,7 @@ export default async function Home() {
         <Vazio icone={Building2} titulo="Nenhum cliente cadastrado.">
           <p>A coleta procura licitações para os perfis de busca dos clientes. Comece cadastrando o primeiro.</p>
           <Button asChild size="sm">
-            <Link href="/clientes">
+            <Link href="/clientes/novo">
               <Plus />
               Cadastrar cliente
             </Link>

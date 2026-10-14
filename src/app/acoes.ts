@@ -122,11 +122,12 @@ export async function analisar(disputaId: string): Promise<Saida & { analise?: D
   const d = await carregar(disputaId);
   if (!d) return { ok: false, mensagem: "Disputa não encontrada." };
 
+  // select("*"): a coluna de objetivos pode ainda não existir no banco
   const { data: cliente } = await supabase
     .from("clientes")
-    .select("razao_social, porte, contexto")
+    .select("*")
     .eq("id", d.cliente_id)
-    .single<Pick<ClienteRow, "razao_social" | "porte" | "contexto">>();
+    .single<Pick<ClienteRow, "razao_social" | "porte" | "contexto" | "objetivos">>();
   if (!cliente) return { ok: false, mensagem: "Cliente não encontrado." };
 
   try {

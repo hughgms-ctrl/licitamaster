@@ -128,7 +128,14 @@ export default function RoteiroDisputa({ d, ficha }: { d: DisputaCompleta; ficha
                     <label key={p.id} className="flex cursor-pointer gap-3 rounded-md p-2 hover:bg-accent/50">
                       <Checkbox checked={ok} onCheckedChange={(v) => alternar(chave, v === true)} className="mt-0.5" />
                       <span className="min-w-0 space-y-1">
-                        <span className={cn("block font-medium", ok && "text-muted-foreground line-through")}>{p.titulo}</span>
+                        <span className={cn("flex flex-wrap items-baseline gap-2 font-medium", ok && "text-muted-foreground line-through")}>
+                          {p.titulo}
+                          {p.sniper && !ok && (
+                            <span className="num rounded bg-muted px-1.5 py-0.5 text-[0.6875rem] font-medium text-muted-foreground no-underline">
+                              Sniper {p.sniper}
+                            </span>
+                          )}
+                        </span>
                         {!ok && <span className="block leading-relaxed text-muted-foreground">{p.detalhe}</span>}
                         {!ok && p.cuidado && (
                           <span className="flex items-start gap-1.5 text-xs leading-relaxed text-warning">

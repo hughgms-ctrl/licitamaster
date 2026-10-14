@@ -66,7 +66,10 @@ export default function Portal({
   cofre,
   preparo,
   assessoriaPct,
+  lucroPct,
 }: {
+  /** lucro mínimo dos objetivos, para a calculadora */
+  lucroPct?: number | null;
   /** taxa de êxito da assessoria, para a calculadora de preço já vir preenchida */
   assessoriaPct?: number | null;
   cofre?: React.ReactNode;
@@ -119,6 +122,7 @@ export default function Portal({
                 agora={agora}
                 declaracao={declaracao}
                 assessoriaPct={assessoriaPct}
+                lucroPct={lucroPct}
                 resolvida={(status, preco) =>
                   setCartoes((xs) =>
                     xs.map((x) => (x.id === c.id ? { ...x, status, precoMinimo: preco ?? x.precoMinimo } : x))
@@ -221,12 +225,14 @@ function Decisao({
   declaracao,
   resolvida,
   assessoriaPct,
+  lucroPct,
 }: {
   c: CartaoPortal;
   token: string;
   agora: number;
   declaracao: string;
   assessoriaPct?: number | null;
+  lucroPct?: number | null;
   resolvida: (status: StatusDisputa, preco?: number) => void;
 }) {
   const [modo, setModo] = useState<"inicio" | "sim" | "nao">("inicio");
@@ -313,6 +319,7 @@ function Decisao({
               className="rounded-md border p-3"
               estimado={c.valorEstimado}
               assessoriaPct={assessoriaPct}
+              lucroPct={lucroPct}
               rotuloUsar="Usar este valor"
               usar={(v) => {
                 setPreco(v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));

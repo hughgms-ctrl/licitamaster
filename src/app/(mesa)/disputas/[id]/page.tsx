@@ -54,8 +54,12 @@ export default async function Pagina({
       .eq("licitacao_id", d.licitacao_id)
       .neq("id", id)
       .in("status", STATUS_EXCLUSIVOS),
-    // taxa de êxito do cliente (a coluna pode não existir em bancos antigos)
-    supabase.from("clientes").select("percentual_exito").eq("id", d.cliente_id).maybeSingle<{ percentual_exito: number | null }>(),
+    // taxa de êxito e objetivos do cliente (select("*"): as colunas podem não existir em bancos antigos)
+    supabase
+      .from("clientes")
+      .select("*")
+      .eq("id", d.cliente_id)
+      .maybeSingle<{ percentual_exito?: number | null; objetivos?: { lucro_pct?: number | null } }>(),
   ]);
 
   const outra = (outras ?? [])[0] as unknown as
@@ -76,6 +80,7 @@ export default async function Pagina({
       comOutro={comOutro}
       abaInicial={aba as AbaDisputa | undefined}
       assessoriaPct={cobranca?.percentual_exito ?? null}
+      lucroPct={cobranca?.objetivos?.lucro_pct ?? null}
     />
   );
 }

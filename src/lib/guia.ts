@@ -17,6 +17,8 @@ export interface Passo {
   detalhe: string;
   /** erro comum que desclassifica ou dá multa */
   cuidado?: string;
+  /** passo correspondente do método Sniper (14 passos), quando há */
+  sniper?: number;
 }
 
 export interface Fase {
@@ -37,6 +39,7 @@ export const FASES: Fase[] = [
       "O cliente viu as exigências do edital, aprovou e deu o preço mínimo. Agora é conferir a ficha, deixar os documentos em dia e cadastrar a proposta no sistema antes do horário de abertura.",
     passos: [
       {
+        sniper: 2,
         id: "ler_edital",
         titulo: "Conferir a ficha do edital",
         detalhe:
@@ -44,6 +47,7 @@ export const FASES: Fase[] = [
         cuidado: "Leia também o Termo de Referência: é lá que ficam as exigências do produto ou serviço.",
       },
       {
+        sniper: 3,
         id: "duvidas",
         titulo: "Tirar dúvidas ou impugnar, se precisar",
         detalhe:
@@ -51,25 +55,42 @@ export const FASES: Fase[] = [
         cuidado: "Depois do prazo, não adianta reclamar: vale o que está escrito.",
       },
       {
+        sniper: 4,
+        id: "produto",
+        titulo: "Escolher o produto que atende ao edital",
+        detalhe:
+          "O melhor produto é o que cumpre todas as exigências do Termo de Referência, nos mínimos detalhes, pelo menor preço. Compare item por item: medidas, material, certificados, garantia, marca de referência.",
+        cuidado: "Produto fora da especificação desclassifica, mesmo sendo mais barato.",
+      },
+      {
+        sniper: 5,
+        id: "fornecedor",
+        titulo: "Fechar o fornecedor e o custo",
+        detalhe:
+          "Com o cliente, confirme quem fornece (ou o custo de fazer), o prazo de entrega e o frete até o órgão. Guarde as cotações: se o preço ficar muito baixo, o pregoeiro pode pedir prova de que dá para cumprir.",
+      },
+      {
+        sniper: 7,
+        id: "concorrencia",
+        titulo: "Mapear a concorrência",
+        detalhe:
+          "Veja quem ganhou licitações parecidas e por quanto (aba Preço da licitação, \"Preço de referência\"). Quem já vende para esse órgão ou cidade costuma voltar. Se souber a marca que eles usam, cote também: assim você prevê até onde cada um consegue baixar.",
+      },
+      {
+        sniper: 6,
+        id: "preco",
+        titulo: "Compor o preço e definir a estratégia",
+        detalhe:
+          "Calcule o preço mínimo na aba Preço da licitação: impostos e taxas entram sobre o preço de venda, não sobre o custo. Proposta inicial um pouco abaixo do valor estimado, e o piso como limite dos lances. Anote quanto vai baixar por lance (ex: 0,5% a 1%).",
+        cuidado: "Nunca dê lance abaixo do preço mínimo do cliente. Ganhar com prejuízo vira contrato que ele não consegue cumprir.",
+      },
+      {
+        sniper: 8,
         id: "documentos",
         titulo: "Conferir a habilitação no cofre",
         detalhe:
           "A ficha cruza o que o edital pede com o cofre do cliente. Todas as certidões precisam valer na data da sessão e, de preferência, alguns dias depois.",
         cuidado: "Certidão vencida é o motivo número um de perder uma disputa já ganha no preço.",
-      },
-      {
-        id: "fornecedor",
-        titulo: "Fechar o fornecedor e o custo",
-        detalhe:
-          "Com o cliente, confirme quem fornece (ou o custo de fazer), o prazo de entrega e o frete até o órgão. Guarde as cotações: se o preço ficar muito baixo, o pregoeiro pode pedir prova de que dá para cumprir.",
-        cuidado: "Produto fora da especificação do edital desclassifica, mesmo sendo mais barato.",
-      },
-      {
-        id: "preco",
-        titulo: "Definir a estratégia de preço",
-        detalhe:
-          "Calcule o preço mínimo na aba Preço da licitação: impostos e taxas entram sobre o preço de venda, não sobre o custo. Proposta inicial um pouco abaixo do valor estimado, e o piso como limite dos lances. Anote quanto vai baixar por lance (ex: 0,5% a 1%).",
-        cuidado: "Nunca dê lance abaixo do preço mínimo do cliente. Ganhar com prejuízo vira contrato que ele não consegue cumprir.",
       },
       {
         id: "cadastrar",
@@ -83,7 +104,7 @@ export const FASES: Fase[] = [
         titulo: "Avisar o cliente e marcar na agenda",
         detalhe:
           "Mande ao cliente data e hora da sessão e peça que fique por perto do telefone. Coloque um alarme 30 minutos antes.",
-      },
+      }
     ],
   },
   {
@@ -106,6 +127,7 @@ export const FASES: Fase[] = [
           "Aberto: lances livres e, se alguém der lance nos últimos minutos, o tempo se prorroga. Aberto e fechado: depois da fase aberta, os melhores colocados dão um último lance fechado. A ficha diz qual é; os tempos exatos estão no edital.",
       },
       {
+        sniper: 10,
         id: "lances",
         titulo: "Dar os lances respeitando o piso",
         detalhe:
@@ -142,6 +164,7 @@ export const FASES: Fase[] = [
         cuidado: "Valor unitário vezes quantidade tem que bater com o total. Erro de conta é motivo de recusa.",
       },
       {
+        sniper: 11,
         id: "anexar_docs",
         titulo: "Anexar os documentos de habilitação",
         detalhe:
@@ -169,12 +192,22 @@ export const FASES: Fase[] = [
       "Depois do resultado, quem discorda pode recorrer. Isso vale para o seu cliente e para os concorrentes dele.",
     passos: [
       {
+        sniper: 11,
+        id: "docs_vencedor",
+        titulo: "Conferir os documentos de quem ganhou",
+        detalhe:
+          "Se o cliente não ficou em 1º, abra a proposta e os documentos do vencedor no sistema assim que forem anexados. Compare com o edital: certidão vencida, atestado incompatível, produto fora da especificação ou declaração faltando são motivo de recurso.",
+        cuidado: "A intenção de recurso precisa ser registrada na hora, logo depois do resultado. Confira rápido.",
+      },
+      {
+        sniper: 12,
         id: "intencao",
         titulo: "Manifestar intenção de recurso, se fizer sentido",
         detalhe:
           "Logo após o resultado, o sistema abre um prazo curto para quem quiser recorrer avisar a intenção, com um motivo resumido. Sem isso, perde-se o direito. Use só com motivo real (ex: o vencedor não cumpriu algo do edital).",
       },
       {
+        sniper: 12,
         id: "razoes",
         titulo: "Enviar as razões ou as contrarrazões",
         detalhe:
@@ -191,6 +224,7 @@ export const FASES: Fase[] = [
       "O órgão confirma o resultado (adjudicação e homologação) e chama a empresa para assinar. A partir daí começa a entrega, e com ela o pagamento.",
     passos: [
       {
+        sniper: 13,
         id: "assinar",
         titulo: "Assinar o contrato ou a ata no prazo",
         detalhe:

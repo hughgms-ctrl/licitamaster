@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { textoObjetivos } from "./objetivos";
 import type { AnaliseIA, ClienteRow, LicitacaoRow } from "./db";
 import type { AmostraObjeto } from "./amostra";
 import { normalizar, type TermoPositivo } from "./scoring";
@@ -276,8 +277,9 @@ VIU causando falso positivo nesta amostra.`;
  */
 export async function analisarLicitacao(
   lic: LicitacaoRow,
-  cliente: Pick<ClienteRow, "razao_social" | "porte" | "contexto">
+  cliente: Pick<ClienteRow, "razao_social" | "porte" | "contexto" | "objetivos">
 ): Promise<AnaliseIA> {
+  const objetivos = textoObjetivos(cliente.objetivos);
   const prompt = `Você é analista de licitações. Um operador disputa licitações EM NOME de empresas
 clientes; o cliente só executa o contrato se ganhar. Avalie se esta licitação serve para ESTE cliente.
 
@@ -285,7 +287,7 @@ CLIENTE:
 - Empresa: ${cliente.razao_social} (porte: ${cliente.porte})
 - O que faz, como entrega, onde atua, limites:
 ${cliente.contexto || "(o cliente ainda não descreveu a operação — seja conservador)"}
-
+${objetivos ? `\nOBJETIVOS DO CLIENTE (pese no veredito: capital, risco e lucro mínimo):\n${objetivos}\n` : ""}
 LICITAÇÃO (PNCP):
 - Modalidade: ${lic.modalidade_nome ?? "—"}${lic.srp ? " (registro de preços)" : ""}
 - Modo de disputa: ${lic.modo_disputa ?? "—"}

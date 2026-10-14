@@ -62,6 +62,7 @@ export default function DisputaDetalhe({
   comOutro,
   abaInicial,
   assessoriaPct,
+  lucroPct,
 }: {
   inicial: DisputaCompleta;
   fichaInicial: FichaRow | null;
@@ -72,6 +73,8 @@ export default function DisputaDetalhe({
   abaInicial?: AbaDisputa;
   /** taxa de êxito do cliente, para a calculadora já vir preenchida */
   assessoriaPct?: number | null;
+  /** lucro mínimo dos objetivos do cliente */
+  lucroPct?: number | null;
 }) {
   const router = useRouter();
   const [d, setD] = useState(inicial);
@@ -391,6 +394,7 @@ export default function DisputaDetalhe({
               <CalculadoraPreco
                 estimado={l.valor_estimado}
                 assessoriaPct={assessoriaPct}
+                lucroPct={lucroPct}
                 usar={(valor) =>
                   a.rodar(
                     () => salvarPrecoMinimo(d.id, valor),

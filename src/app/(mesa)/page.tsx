@@ -8,15 +8,10 @@ import { Vazio } from "@/components/ui/vazio";
 import { Button } from "@/components/ui/button";
 import { Building2, Plus } from "lucide-react";
 import Mesa from "@/components/Mesa";
-import type { FichaRow } from "@/lib/ficha";
-import type { DocumentoResumo } from "@/lib/documentos";
-import type { ResultadoDisputa } from "@/lib/resultado";
-import type { ContratoDisputa } from "@/lib/contrato";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-// A leitura de edital roda como server action desta página e pode levar
-// minutos (download do PNCP + IA lendo dezenas de páginas).
+// A análise rápida dos cards roda como server action desta página (chamada à IA).
 export const maxDuration = 300;
 
 /** Etapas que aparecem na mesa sem limite de data: o trabalho em andamento. */
@@ -37,10 +32,8 @@ export default async function Home() {
   let encerradas: DisputaCompleta[] = [];
   let clientes: { id: string; nome: string }[] = [];
   let ultimaColeta: { finalizado_em: string | null; erro: string | null } | null = null;
-  const fichas: Record<string, FichaRow> = {};
-  const cofres: Record<string, DocumentoResumo[]> = {};
-  const resultados: Record<string, ResultadoDisputa> = {};
-  const contratos: Record<string, ContratoDisputa> = {};
+  const lidas: Record<string, true> = {};
+  const comResultado: Record<string, true> = {};
   let falha: string | null = null;
 
   try {
@@ -91,33 +84,18 @@ export default async function Home() {
     clientes = (cls.data ?? []).map((c) => ({ id: c.id, nome: c.nome_fantasia || c.razao_social }));
     ultimaColeta = runs.data?.[0] ?? null;
 
-    // Fichas e cofres são pequenos (uma ficha por edital lido, dezenas de
-    // documentos por cliente): carregar tudo é mais simples que filtrar.
-    const [fs, ds] = await Promise.all([
-      supabase.from("fichas_edital").select("*").order("gerado_em", { ascending: false }).limit(1000),
-      supabase
-        .from("documentos_cliente")
-        .select("id, cliente_id, tipo, descricao, nome_arquivo, validade, emitido_em, enviado_por, created_at")
-        .order("created_at", { ascending: false }),
-    ]);
-    for (const f of (fs.data ?? []) as FichaRow[]) fichas[f.licitacao_id] = f;
-    // Resultados das sessões: só das disputas que já chegaram lá. Se a tabela
-    // ainda não existir no banco, a mesa abre sem eles.
+    // Só para os selos do card: qual edital já foi lido, qual sessão já tem
+    // lances registrados. O conteúdo abre na página de cada licitação.
+    const { data: fs } = await supabase.from("fichas_edital").select("licitacao_id").limit(5000);
+    for (const f of fs ?? []) lidas[f.licitacao_id as string] = true;
     const comSessao = [...andamento, ...encerradas]
       .filter((d) => ["em_disputa", "ganhou", "perdeu", "desistiu"].includes(d.status))
       .map((d) => d.id)
       .slice(0, 300);
     if (comSessao.length) {
-      const { data: rs } = await supabase.from("resultados_disputa").select("*").in("disputa_id", comSessao);
-      for (const r of (rs ?? []) as ResultadoDisputa[]) resultados[r.disputa_id] = r;
-    }
-    const ganhas = encerradas.filter((d) => d.status === "ganhou").map((d) => d.id);
-    if (ganhas.length) {
-      const { data: cs } = await supabase.from("contratos_disputa").select("*").in("disputa_id", ganhas);
-      for (const c of (cs ?? []) as ContratoDisputa[]) contratos[c.disputa_id] = c;
-    }
-    for (const doc of (ds.data ?? []) as (DocumentoResumo & { cliente_id: string })[]) {
-      (cofres[doc.cliente_id] ??= []).push(doc);
+      // Se a tabela ainda não existir no banco, a mesa abre sem os selos.
+      const { data: rs } = await supabase.from("resultados_disputa").select("disputa_id").in("disputa_id", comSessao);
+      for (const r of rs ?? []) comResultado[r.disputa_id as string] = true;
     }
   } catch (e) {
     falha = (e as Error).message;
@@ -174,10 +152,8 @@ export default async function Home() {
       clientes={clientes}
       exclusivas={exclusivas}
       ultimaColeta={ultimaColeta}
-      fichas={fichas}
-      cofres={cofres}
-      resultados={resultados}
-      contratos={contratos}
+      lidas={lidas}
+      comResultado={comResultado}
     />
   );
 }

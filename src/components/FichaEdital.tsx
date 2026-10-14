@@ -73,7 +73,7 @@ export default function FichaEdital({
       </dl>
 
       <section className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 [break-after:avoid]">
           <h4 className="text-sm font-semibold">Habilitação de {nomeCliente}</h4>
           <StatusDot tom={prontos === checklist.length ? "sucesso" : "alerta"}>
             <span className="num">
@@ -86,8 +86,11 @@ export default function FichaEdital({
         ) : (
           <ul className="divide-y overflow-hidden rounded-md border bg-card">
             {checklist.map((c, i) => (
-              <li key={`${c.tipo}-${i}`} className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:items-center sm:gap-3">
-                <span className="w-56 shrink-0">
+              <li
+                key={`${c.tipo}-${i}`}
+                className="grid gap-1 px-3 py-2.5 break-inside-avoid sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-3"
+              >
+                <span>
                   <StatusDot tom={TOM_ITEM[c.situacao]}>
                     {ROTULO_ITEM[c.situacao]}
                     {c.validade && c.situacao !== "ok" && (
@@ -98,8 +101,10 @@ export default function FichaEdital({
                     )}
                   </StatusDot>
                 </span>
-                <span className="min-w-0 flex-1">{c.rotulo}</span>
-                {c.detalhe && <span className="text-xs text-muted-foreground">{c.detalhe}</span>}
+                <span className="min-w-0 space-y-0.5">
+                  <span className="block font-medium">{c.rotulo}</span>
+                  {c.detalhe && <span className="block text-xs leading-relaxed text-muted-foreground">{c.detalhe}</span>}
+                </span>
               </li>
             ))}
           </ul>

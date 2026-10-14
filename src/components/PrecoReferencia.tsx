@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { Loader2, TrendingDown } from "lucide-react";
 import { referenciaPreco } from "@/app/acoes";
 import type { DisputaCompleta } from "@/lib/db";
-import type { AnalisePreco } from "@/lib/preco";
+import { chanceDeGanhar, type AnalisePreco } from "@/lib/preco";
+import { Concorrentes, ChanceGanhar } from "./Mercado";
 import { brl } from "@/lib/proposta";
 import { cn } from "@/lib/utils";
 import { Aviso } from "./ui/aviso";
@@ -97,6 +98,10 @@ export default function PrecoReferencia({ d }: { d: DisputaCompleta }) {
             </Aviso>
           )}
           {a.n < 5 && <p className="text-xs text-muted-foreground">Poucas referências: use como sinal, não como regra.</p>}
+
+          {piso && estimado && <ChanceGanhar chance={chanceDeGanhar(piso, estimado, a.razoes)} rotulo="Chance com o preço mínimo atual" />}
+
+          {a.concorrentes.length > 0 && <Concorrentes lista={a.concorrentes} />}
 
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">As mais parecidas</p>

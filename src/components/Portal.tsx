@@ -6,6 +6,8 @@ import { formatarData, formatarValor, tempoRestante } from "@/lib/formato";
 import { responder, type SaidaPortal } from "@/app/c/[token]/acoes";
 import { Calculator, ChevronDown, ExternalLink, Loader2 } from "lucide-react";
 import CalculadoraPreco from "./CalculadoraPreco";
+import { ChanceGanhar, Concorrentes } from "./Mercado";
+import { chanceDeGanhar, type Concorrente } from "@/lib/preco";
 import { cn } from "@/lib/utils";
 import { Marca } from "./Marca";
 import { SeletorTema } from "./SeletorTema";
@@ -32,6 +34,18 @@ export interface CartaoPortal {
   precoMinimo: number | null;
   /** o que o edital exige, para o cliente decidir sabendo (só nas que esperam decisão) */
   exigencias?: ExigenciasCliente | null;
+  /** o que o mercado paga em licitações parecidas (só nas que esperam decisão) */
+  mercado?: MercadoCliente | null;
+}
+
+export interface MercadoCliente {
+  /** lance que costuma ganhar, em R$ */
+  tipico: number | null;
+  faixa: [number, number] | null;
+  n: number;
+  /** vencedor ÷ estimado das parecidas */
+  razoes: number[];
+  concorrentes: Concorrente[];
 }
 
 export interface ExigenciasCliente {
@@ -286,6 +300,7 @@ function Decisao({
       </dl>
 
       {c.exigencias && <Exigencias e={c.exigencias} />}
+      {c.mercado && <MercadoPainel m={c.mercado} />}
 
       {modo === "inicio" && (
         <div className="grid grid-cols-2 gap-2">
@@ -313,7 +328,11 @@ function Decisao({
               autoFocus
             />
           </Campo>
-          {pctEstimado != null && <Medidor pct={pctEstimado} />}
+          {c.mercado && c.mercado.razoes.length >= 3 && valorPreco ? (
+            <ChanceGanhar chance={chanceDeGanhar(valorPreco, c.valorEstimado, c.mercado.razoes)} rotulo="Sua chance com esse mínimo" />
+          ) : (
+            pctEstimado != null && <Medidor pct={pctEstimado} />
+          )}
           {calcular ? (
             <CalculadoraPreco
               className="rounded-md border p-3"
@@ -533,4 +552,29 @@ function lerReais(t: string): number | null {
   else if (/\.\d{1,2}$/.test(s)) n = Number(s);
   else n = Number(s.replace(/\./g, ""));
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** O que o mercado paga: base para o cliente decidir o preço mínimo. */
+function MercadoPainel({ m }: { m: MercadoCliente }) {
+  const brl0 = (x: number) => x.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  return (
+    <div className="space-y-3 rounded-md border bg-muted/30 p-3 text-sm">
+      <p className="font-medium">O que o mercado paga</p>
+      <dl className="grid grid-cols-2 gap-3">
+        <div>
+          <dt className="text-xs text-muted-foreground">Lance que costuma ganhar</dt>
+          <dd className="num text-base font-semibold">{m.tipico != null ? brl0(m.tipico) : "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Faixa comum</dt>
+          <dd className="num font-medium">{m.faixa ? `${brl0(m.faixa[0])} a ${brl0(m.faixa[1])}` : "poucos dados"}</dd>
+        </div>
+      </dl>
+      {m.concorrentes.length > 0 && <Concorrentes lista={m.concorrentes} />}
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Com base em {m.n} {m.n === 1 ? "licitação parecida" : "licitações parecidas"} já encerradas (resultados oficiais).
+        {m.n < 5 ? " Poucas referências: use como sinal, não como regra." : ""} O preço mínimo é decisão sua.
+      </p>
+    </div>
+  );
 }

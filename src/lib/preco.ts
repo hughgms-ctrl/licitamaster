@@ -14,6 +14,9 @@ export interface Referencia {
   modalidade: string | null;
   estimado: number;
   vencedor: number;
+  /** quem ganhou, quando se sabe */
+  fornecedor?: string | null;
+  cnpj?: string | null;
 }
 
 export interface Semelhante extends Referencia {
@@ -57,6 +60,18 @@ export interface AnalisePreco {
   mediana: number | null;
   p25: number | null;
   p75: number | null;
+  /** quem mais ganha licitações parecidas */
+  concorrentes: Concorrente[];
+  /** vencedor ÷ estimado de cada parecida: base da chance de ganhar */
+  razoes: number[];
+}
+
+export interface Concorrente {
+  nome: string;
+  cnpj: string | null;
+  vitorias: number;
+  /** desconto médio sobre o estimado nas vitórias */
+  descontoMedio: number;
 }
 
 export function analisarPreco(
@@ -85,5 +100,56 @@ export function analisarPreco(
     mediana: ds.length ? quantil(ds, 0.5) : null,
     p25: ds.length >= 4 ? quantil(ds, 0.25) : null,
     p75: ds.length >= 4 ? quantil(ds, 0.75) : null,
+    concorrentes: agruparConcorrentes(semelhantes.slice(0, 80)),
+    razoes: top.map((s) => 1 - s.desconto),
   };
+}
+
+/** Nome sem acento, caixa e sufixo societário: "Fogo Zero Ltda" e "FOGO ZERO LTDA - ME" viram a mesma empresa. */
+const chaveEmpresa = (nome: string) =>
+  nome
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\b(ltda|me|epp|eireli|s\/?a|sa|mei|limitada|cia)\b/g, " ")
+    .replace(/[^a-z0-9]/g, "");
+
+/** Vitórias por empresa nas licitações parecidas (pelo nome; matriz e filiais juntas). */
+export function agruparConcorrentes(semelhantes: Semelhante[], limite = 8): Concorrente[] {
+  const mapa = new Map<string, { nome: string; cnpj: string | null; vitorias: number; soma: number }>();
+  for (const s of semelhantes) {
+    const nome = s.fornecedor?.trim();
+    if (!nome) continue;
+    const k = chaveEmpresa(nome);
+    const c = mapa.get(k) ?? { nome, cnpj: null, vitorias: 0, soma: 0 };
+    c.cnpj ||= s.cnpj?.trim() || null;
+    c.vitorias++;
+    c.soma += s.desconto;
+    mapa.set(k, c);
+  }
+  return [...mapa.values()]
+    .sort((a, b) => b.vitorias - a.vitorias || b.soma / b.vitorias - a.soma / a.vitorias)
+    .slice(0, limite)
+    .map((c) => ({ nome: c.nome, cnpj: c.cnpj, vitorias: c.vitorias, descontoMedio: c.soma / c.vitorias }));
+}
+
+export interface Chance {
+  nivel: "alta" | "media" | "baixa" | "poucos_dados";
+  /** em quantas das parecidas este preço teria empatado ou ficado abaixo do vencedor */
+  fracao: number | null;
+  n: number;
+}
+
+/**
+ * Chance de ganhar com um preço: em quantas licitações parecidas esse preço
+ * (proporcional ao estimado) ficaria igual ou abaixo do que o vencedor
+ * cobrou. É uma régua do mercado, não promessa: documentação e concorrentes
+ * do dia decidem o resto.
+ */
+export function chanceDeGanhar(preco: number | null, estimado: number | null, razoes: number[]): Chance {
+  const n = razoes.length;
+  if (!preco || !estimado || estimado <= 0 || n < 3) return { nivel: "poucos_dados", fracao: null, n };
+  const r = preco / estimado;
+  const fracao = razoes.filter((v) => r <= v + 1e-9).length / n;
+  return { nivel: fracao >= 0.6 ? "alta" : fracao >= 0.3 ? "media" : "baixa", fracao, n };
 }

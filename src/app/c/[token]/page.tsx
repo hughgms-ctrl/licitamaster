@@ -11,6 +11,8 @@ import Cofre from "@/components/Cofre";
 import PreparoPortal from "@/components/PreparoPortal";
 import type { Preparo } from "@/lib/preparo";
 import { ptLink, ptPedirUpload, ptRegistrar } from "./acoes";
+import { analisarMercado, carregarReferencias } from "@/lib/referencias";
+import type { Referencia } from "@/lib/preco";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +88,25 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
     };
   }
 
+  // O que o mercado paga, só nas que esperam decisão: quem costuma ganhar e
+  // por quanto, para o cliente decidir o preço sabendo.
+  const decidir = ((data ?? []) as (DisputaRow & { licitacao: LicitacaoRow })[]).filter(
+    (d) => d.status === "aguardando_cliente" && d.licitacao.valor_estimado
+  );
+  const refs: Referencia[] = decidir.length ? await carregarReferencias(supabase) : [];
+  function mercadoDe(l: LicitacaoRow) {
+    if (!l.valor_estimado || refs.length === 0) return null;
+    const a = analisarMercado(l, refs);
+    if (a.n === 0) return null;
+    return {
+      tipico: a.mediana != null ? l.valor_estimado * (1 - a.mediana) : null,
+      faixa: a.p25 != null && a.p75 != null ? ([l.valor_estimado * (1 - a.p75), l.valor_estimado * (1 - a.p25)] as [number, number]) : null,
+      n: a.n,
+      razoes: a.razoes,
+      concorrentes: a.concorrentes.slice(0, 4),
+    };
+  }
+
   // Só o que o cliente precisa ver. Score, termos, notas internas e análise
   // técnica ficam do lado de cá.
   const cartoes: CartaoPortal[] = ((data ?? []) as (DisputaRow & { licitacao: LicitacaoRow })[]).map(
@@ -103,6 +124,7 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
       precoMinimo: d.preco_minimo,
       exigencias:
         d.status === "aguardando_cliente" ? exigenciasDe(d.licitacao_id, d.licitacao.data_encerramento_proposta) : null,
+      mercado: d.status === "aguardando_cliente" ? mercadoDe(d.licitacao) : null,
     })
   );
 

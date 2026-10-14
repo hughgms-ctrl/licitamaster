@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, ExternalLink, Loader2 } from "lucide-react";
+import { Check, ExternalLink, FileSignature, Loader2 } from "lucide-react";
 import { ptInformarPreparo } from "@/app/c/[token]/acoes";
 import { rotuloTipo, type DocumentoResumo } from "@/lib/documentos";
 import {
@@ -127,6 +127,15 @@ function Passo({
       {!feito && (
         <>
           <p className="text-sm leading-relaxed text-muted-foreground">{item.instrucao}</p>
+          {item.id === "representante" && (
+            <a
+              href={`/c/${token}/procuracao`}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline dark:text-sidebar-primary"
+            >
+              <FileSignature className="size-3.5" />
+              Abrir a procuração pronta
+            </a>
+          )}
           {item.link && (
             <a
               href={item.link.url}

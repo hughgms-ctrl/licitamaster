@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import type { StatusDisputa } from "@/lib/db";
 import { formatarData, formatarValor, tempoRestante } from "@/lib/formato";
 import { responder, type SaidaPortal } from "@/app/c/[token]/acoes";
-import { ChevronDown, ExternalLink, Loader2 } from "lucide-react";
+import { Calculator, ChevronDown, ExternalLink, Loader2 } from "lucide-react";
+import CalculadoraPreco from "./CalculadoraPreco";
 import { cn } from "@/lib/utils";
 import { Marca } from "./Marca";
 import { SeletorTema } from "./SeletorTema";
@@ -64,7 +65,10 @@ export default function Portal({
   declaracao,
   cofre,
   preparo,
+  assessoriaPct,
 }: {
+  /** taxa de êxito da assessoria, para a calculadora de preço já vir preenchida */
+  assessoriaPct?: number | null;
   cofre?: React.ReactNode;
   preparo?: React.ReactNode;
   token: string;
@@ -114,6 +118,7 @@ export default function Portal({
                 token={token}
                 agora={agora}
                 declaracao={declaracao}
+                assessoriaPct={assessoriaPct}
                 resolvida={(status, preco) =>
                   setCartoes((xs) =>
                     xs.map((x) => (x.id === c.id ? { ...x, status, precoMinimo: preco ?? x.precoMinimo } : x))
@@ -215,15 +220,18 @@ function Decisao({
   agora,
   declaracao,
   resolvida,
+  assessoriaPct,
 }: {
   c: CartaoPortal;
   token: string;
   agora: number;
   declaracao: string;
+  assessoriaPct?: number | null;
   resolvida: (status: StatusDisputa, preco?: number) => void;
 }) {
   const [modo, setModo] = useState<"inicio" | "sim" | "nao">("inicio");
   const [preco, setPreco] = useState("");
+  const [calcular, setCalcular] = useState(false);
   const [notas, setNotas] = useState("");
   const [motivo, setMotivo] = useState("");
   const [confirmo, setConfirmo] = useState(false);
@@ -300,6 +308,27 @@ function Decisao({
             />
           </Campo>
           {pctEstimado != null && <Medidor pct={pctEstimado} />}
+          {calcular ? (
+            <CalculadoraPreco
+              className="rounded-md border p-3"
+              estimado={c.valorEstimado}
+              assessoriaPct={assessoriaPct}
+              rotuloUsar="Usar este valor"
+              usar={(v) => {
+                setPreco(v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                setCalcular(false);
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setCalcular(true)}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline dark:text-sidebar-primary"
+            >
+              <Calculator className="size-4" />
+              Não sabe o valor? Calcule a partir do seu custo
+            </button>
+          )}
           <Campo rotulo="Observações (opcional)">
             <Textarea
               rows={2}

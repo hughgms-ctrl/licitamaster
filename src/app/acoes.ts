@@ -421,3 +421,19 @@ export async function lerEditalAcao(disputaId: string): Promise<Saida & { ficha?
     return { ok: false, mensagem: `Não deu para ler o edital: ${(e as Error).message}` };
   }
 }
+
+/**
+ * Grava o preço mínimo da disputa pelo operador (normalmente vindo da
+ * calculadora). O cliente também informa o dele no portal; o último vale.
+ */
+export async function salvarPrecoMinimo(disputaId: string, valor: number | null): Promise<Saida> {
+  await exigirOperador();
+  if (valor != null && (!Number.isFinite(valor) || valor <= 0)) return { ok: false, mensagem: "Valor inválido." };
+  const { error } = await db()
+    .from("disputas")
+    .update({ preco_minimo: valor == null ? null : Math.round(valor * 100) / 100 })
+    .eq("id", disputaId);
+  if (error) return { ok: false, mensagem: error.message };
+  revalidatePath("/");
+  return { ok: true, mensagem: valor == null ? "Preço mínimo apagado." : "Preço mínimo salvo." };
+}

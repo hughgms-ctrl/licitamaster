@@ -37,7 +37,7 @@ export default async function Pagina({
   if (!data) notFound();
   const d = data as unknown as DisputaCompleta;
 
-  const [{ data: ficha }, { data: docs }, { data: resultado }, { data: contrato }, { data: outras }] = await Promise.all([
+  const [{ data: ficha }, { data: docs }, { data: resultado }, { data: contrato }, { data: outras }, { data: cobranca }] = await Promise.all([
     supabase.from("fichas_edital").select("*").eq("licitacao_id", d.licitacao_id).maybeSingle<FichaRow>(),
     supabase
       .from("documentos_cliente")
@@ -54,6 +54,8 @@ export default async function Pagina({
       .eq("licitacao_id", d.licitacao_id)
       .neq("id", id)
       .in("status", STATUS_EXCLUSIVOS),
+    // taxa de êxito do cliente (a coluna pode não existir em bancos antigos)
+    supabase.from("clientes").select("percentual_exito").eq("id", d.cliente_id).maybeSingle<{ percentual_exito: number | null }>(),
   ]);
 
   const outra = (outras ?? [])[0] as unknown as
@@ -73,6 +75,7 @@ export default async function Pagina({
       contratoInicial={contrato ?? null}
       comOutro={comOutro}
       abaInicial={aba as AbaDisputa | undefined}
+      assessoriaPct={cobranca?.percentual_exito ?? null}
     />
   );
 }

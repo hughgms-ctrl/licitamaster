@@ -58,10 +58,17 @@ export const FASES: Fase[] = [
         cuidado: "Certidão vencida é o motivo número um de perder uma disputa já ganha no preço.",
       },
       {
+        id: "fornecedor",
+        titulo: "Fechar o fornecedor e o custo",
+        detalhe:
+          "Com o cliente, confirme quem fornece (ou o custo de fazer), o prazo de entrega e o frete até o órgão. Guarde as cotações: se o preço ficar muito baixo, o pregoeiro pode pedir prova de que dá para cumprir.",
+        cuidado: "Produto fora da especificação do edital desclassifica, mesmo sendo mais barato.",
+      },
+      {
         id: "preco",
         titulo: "Definir a estratégia de preço",
         detalhe:
-          "Proposta inicial um pouco abaixo do valor estimado, e o piso do cliente como limite dos lances. Anote quanto vai baixar por lance (ex: 0,5% a 1%).",
+          "Calcule o preço mínimo na aba Preço da licitação: impostos e taxas entram sobre o preço de venda, não sobre o custo. Proposta inicial um pouco abaixo do valor estimado, e o piso como limite dos lances. Anote quanto vai baixar por lance (ex: 0,5% a 1%).",
         cuidado: "Nunca dê lance abaixo do preço mínimo do cliente. Ganhar com prejuízo vira contrato que ele não consegue cumprir.",
       },
       {

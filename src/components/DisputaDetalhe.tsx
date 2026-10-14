@@ -20,7 +20,7 @@ import {
   Sparkles,
   TrendingDown,
 } from "lucide-react";
-import { analisar, lerEditalAcao, salvarNotas } from "@/app/acoes";
+import { analisar, lerEditalAcao, salvarNotas, salvarPrecoMinimo } from "@/app/acoes";
 import type { DisputaCompleta } from "@/lib/db";
 import { ROTULO_STATUS } from "@/lib/etapas";
 import { formatarData, formatarValor, limparObjeto } from "@/lib/formato";
@@ -36,6 +36,7 @@ import RoteiroDisputa from "./RoteiroDisputa";
 import RegistroLances from "./RegistroLances";
 import ContratoPainel from "./ContratoPainel";
 import PrecoReferencia from "./PrecoReferencia";
+import CalculadoraPreco from "./CalculadoraPreco";
 import RecursoPainel from "./RecursoPainel";
 import CopiarLink from "./CopiarLink";
 import { TOM_STATUS } from "./tons";
@@ -60,6 +61,7 @@ export default function DisputaDetalhe({
   contratoInicial,
   comOutro,
   abaInicial,
+  assessoriaPct,
 }: {
   inicial: DisputaCompleta;
   fichaInicial: FichaRow | null;
@@ -68,6 +70,8 @@ export default function DisputaDetalhe({
   contratoInicial: ContratoDisputa | null;
   comOutro: string | null;
   abaInicial?: AbaDisputa;
+  /** taxa de êxito do cliente, para a calculadora já vir preenchida */
+  assessoriaPct?: number | null;
 }) {
   const router = useRouter();
   const [d, setD] = useState(inicial);
@@ -97,7 +101,7 @@ export default function DisputaDetalhe({
     { id: "resumo", rotulo: "Resumo", icone: <Sparkles /> },
     { id: "edital", rotulo: "Análise do edital", icone: <FileText /> },
   ];
-  if (l.valor_estimado) abas.push({ id: "preco", rotulo: "Preço de referência", icone: <TrendingDown /> });
+  abas.push({ id: "preco", rotulo: "Preço", icone: <TrendingDown /> });
   if (ETAPAS_COM_GUIA.includes(d.status)) abas.push({ id: "roteiro", rotulo: "Roteiro", icone: <BookOpen /> });
   if ((ETAPAS_COM_RESULTADO as readonly string[]).includes(d.status))
     abas.push({ id: "lances", rotulo: "Lances", icone: <Gavel /> });
@@ -382,8 +386,21 @@ export default function DisputaDetalhe({
         </TabsContent>
 
         {abas.some((x) => x.id === "preco") && (
-          <TabsContent value="preco">
-            <PrecoReferencia d={d} />
+          <TabsContent value="preco" className="space-y-4">
+            <Painel>
+              <CalculadoraPreco
+                estimado={l.valor_estimado}
+                assessoriaPct={assessoriaPct}
+                usar={(valor) =>
+                  a.rodar(
+                    () => salvarPrecoMinimo(d.id, valor),
+                    () => setD((x) => ({ ...x, preco_minimo: valor }))
+                  )
+                }
+                rotuloUsar={d.preco_minimo != null ? "Trocar o preço mínimo por este" : "Usar como preço mínimo"}
+              />
+            </Painel>
+            {l.valor_estimado ? <PrecoReferencia d={d} /> : null}
           </TabsContent>
         )}
         {abas.some((x) => x.id === "roteiro") && (

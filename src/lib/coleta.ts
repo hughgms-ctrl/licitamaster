@@ -7,7 +7,7 @@ import {
   TAMANHO_PAGINA_MAX,
   type ContratacaoPNCP,
 } from "./pncp";
-import { melhorPorCliente, type Perfil, type Resultado } from "./scoring";
+import { melhorPorCliente, ufsDoPerfil, type Perfil, type Resultado } from "./scoring";
 import { alertarOperador, type AlertaOperador } from "./notify";
 
 /** Pausa entre duas chamadas ao PNCP. Sem isso o PNCP estrangula o IP. */
@@ -145,10 +145,12 @@ export async function executarColeta(): Promise<SaidaColeta> {
 
   // Se todo perfil restringe UF, só busca essas UFs. Um perfil nacional
   // basta para varrer o Brasil inteiro (uf = undefined).
-  const algumNacional = perfis.some((p) => p.ufs.length === 0);
+  // As cidades soltas de um perfil entram pela UF delas; o corte por cidade
+  // acontece na pontuação.
+  const algumNacional = perfis.some((p) => ufsDoPerfil(p).length === 0);
   const ufs: (string | undefined)[] = algumNacional
     ? [undefined]
-    : [...new Set(perfis.flatMap((p) => p.ufs))];
+    : [...new Set(perfis.flatMap((p) => ufsDoPerfil(p)))];
 
   const { data: estadoRaw } = await supabase
     .from("coleta_estado")
@@ -235,6 +237,7 @@ export async function executarColeta(): Promise<SaidaColeta> {
             {
               objeto: c.objetoCompra,
               uf: c.unidadeOrgao?.ufSigla,
+              municipio: c.unidadeOrgao?.municipioNome,
               valorEstimado: c.valorTotalEstimado,
               unidade: c.unidadeOrgao?.nomeUnidade,
               orgao: c.orgaoEntidade?.razaoSocial,

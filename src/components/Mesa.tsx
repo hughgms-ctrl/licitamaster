@@ -476,15 +476,51 @@ function Item({
       onClick={() => (d.analise_ia ? setAbrirAnalise((x) => !x) : botaoAnaliseAcao())}
     >
       {pendente && !d.analise_ia ? <Loader2 className="animate-spin" /> : <Sparkles />}
-      {d.analise_ia
-        ? abrirAnalise
-          ? "Fechar análise"
-          : `Análise: ${rotuloVeredito(d.analise_ia.veredito)}`
-        : pendente
-          ? "Analisando…"
-          : "Analisar com IA"}
+      {rotuloAnaliseRapida()}
     </Button>
   );
+  function rotuloAnaliseRapida() {
+    if (!d.analise_ia) return pendente ? "Analisando…" : "Análise rápida";
+    return abrirAnalise ? "Fechar análise rápida" : `Análise rápida: ${rotuloVeredito(d.analise_ia.veredito)}`;
+  }
+  // Análise profunda: baixa e lê o edital inteiro (1 a 3 min) e monta a ficha.
+  const botaoProfunda = (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={lendo}
+      aria-expanded={ficha ? abrirFicha : undefined}
+      onClick={() => (ficha ? setAbrirFicha((x) => !x) : lerEdital())}
+    >
+      {lendo ? <Loader2 className="animate-spin" /> : ficha ? <FileText /> : <FileSearch />}
+      {lendo
+        ? "Lendo o edital… (1 a 3 min)"
+        : ficha
+          ? abrirFicha
+            ? "Fechar análise profunda"
+            : "Análise profunda"
+          : "Análise profunda (lê o edital)"}
+    </Button>
+  );
+  async function enviar() {
+    if (
+      !ficha &&
+      !(await confirmar({
+        titulo: "Enviar sem a análise profunda?",
+        texto:
+          "O edital ainda não foi lido. O cliente não vai ver no portal os documentos e atestados que vão exigir dele, e você não confere antes se falta algo no cofre.",
+        confirmar: "Enviar assim mesmo",
+      }))
+    )
+      return;
+    rodar(
+      () => enviarAoCliente(d.id),
+      (s) => {
+        avisar({ ...s, titulo: limparObjeto(l.objeto).slice(0, 90) });
+        atualizar(d.id, { status: "aguardando_cliente" });
+      }
+    );
+  }
   const extras: { chave: string; icone: React.ReactNode; rotulo: string; acao?: () => void; href?: string; noMenu: boolean }[] = [];
   if (l.valor_estimado && ["sugerida", "aguardando_cliente", "aprovada", "em_preparacao", "proposta_enviada", "em_disputa"].includes(d.status)) {
     extras.push({
@@ -659,26 +695,12 @@ function Item({
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          {podeEnviar && !ficha && (
-            <Button size="sm" disabled={lendo || comOutro != null} onClick={lerEdital}>
-              {lendo ? <Loader2 className="animate-spin" /> : <FileSearch />}
-              {lendo ? "Lendo o edital… (1 a 3 min)" : "Ler edital para enviar"}
-            </Button>
-          )}
-          {podeEnviar && ficha && (
+          {podeEnviar && (
             <Button
               size="sm"
-              disabled={pendente || comOutro != null}
+              disabled={pendente || lendo || comOutro != null}
               title={comOutro ? `Já está com ${comOutro}` : undefined}
-              onClick={() =>
-                rodar(
-                  () => enviarAoCliente(d.id),
-                  (s) => {
-                    avisar({ ...s, titulo: limparObjeto(l.objeto).slice(0, 90) });
-                    atualizar(d.id, { status: "aguardando_cliente" });
-                  }
-                )
-              }
+              onClick={enviar}
             >
               <Send />
               {d.status === "recusada" ? "Reenviar ao cliente" : "Enviar ao cliente"}
@@ -693,24 +715,7 @@ function Item({
 
           {mostrar("analise") && botaoAnalise}
 
-          {(ficha || !podeEnviar) && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={lendo}
-            aria-expanded={ficha ? abrirFicha : undefined}
-            onClick={() => (ficha ? setAbrirFicha((x) => !x) : lerEdital())}
-          >
-            {lendo ? <Loader2 className="animate-spin" /> : ficha ? <FileText /> : <FileSearch />}
-            {lendo
-              ? "Lendo o edital… (1 a 3 min)"
-              : ficha
-                ? abrirFicha
-                  ? "Fechar ficha"
-                  : "Ficha do edital"
-                : "Ler edital"}
-          </Button>
-          )}
+          {botaoProfunda}
 
           {(ETAPAS_COM_RESULTADO as readonly string[]).includes(d.status) && (
             <Button
@@ -770,7 +775,7 @@ function Item({
               <DropdownMenuContent align="start">
                 <DropdownMenuItem onSelect={() => (d.analise_ia ? setAbrirAnalise((x) => !x) : botaoAnaliseAcao())}>
                   <Sparkles />
-                  {d.analise_ia ? (abrirAnalise ? "Fechar análise" : `Análise: ${rotuloVeredito(d.analise_ia.veredito)}`) : "Analisar com IA"}
+                  {rotuloAnaliseRapida()}
                 </DropdownMenuItem>
                 {extras
                   .filter((x) => x.noMenu)

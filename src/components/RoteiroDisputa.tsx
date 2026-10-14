@@ -87,7 +87,7 @@ export default function RoteiroDisputa({ d, ficha }: { d: DisputaCompleta; ficha
         </dl>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Leia o edital (botão &quot;Ler edital&quot;) para o roteiro mostrar data da sessão, plataforma e modo de disputa.
+          Faça a análise profunda (ela lê o edital) para o roteiro mostrar data da sessão, plataforma e modo de disputa.
         </p>
       )}
 

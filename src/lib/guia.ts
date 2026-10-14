@@ -40,7 +40,7 @@ export const FASES: Fase[] = [
         id: "ler_edital",
         titulo: "Conferir a ficha do edital",
         detalhe:
-          "A IA leu o edital antes de você enviar ao cliente (\"Ficha do edital\" na mesa). Confira data e hora da sessão, plataforma, modo de disputa, documentos exigidos, prazo de entrega e se é exclusiva para ME/EPP. Se o edital foi retificado depois, leia de novo.",
+          "Abra a \"Análise profunda\" na mesa: é a leitura do edital feita pela IA (se ainda não foi feita, faça agora). Confira data e hora da sessão, plataforma, modo de disputa, documentos exigidos, prazo de entrega e se é exclusiva para ME/EPP. Se o edital foi retificado depois, leia de novo.",
         cuidado: "Leia também o Termo de Referência: é lá que ficam as exigências do produto ou serviço.",
       },
       {

@@ -41,7 +41,7 @@ const ABAS: { id: string; rotulo: string; status: StatusDisputa[] }[] = [
 
 /** Uma linha sobre o que fazer em cada aba. */
 const AJUDA_ABA: Record<string, string> = {
-  triagem: "O que a coleta encontrou para os perfis dos clientes. Analise e envie ao cliente só o que vale a pena.",
+  triagem: "O que a coleta encontrou para os perfis dos clientes. A IA já analisa as melhores sozinha; as que valem a pena vêm primeiro. Você decide o que enviar.",
   cliente: "Esperando o cliente decidir no portal. Ele recebeu o link pelo WhatsApp.",
   preparacao: "Aprovadas com preço mínimo. Monte a proposta e confira a habilitação.",
   disputa: "Propostas enviadas e sessões em andamento.",
@@ -116,7 +116,7 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
       .replace(/[̀-ͯ]/g, "")
       .toLowerCase()
       .trim();
-    return disputas.filter((d) => {
+    const lista = disputas.filter((d) => {
       if (!status.includes(d.status)) return false;
       if (cliente !== "todos" && d.cliente_id !== cliente) return false;
       if (!noLugar(d)) return false;
@@ -128,6 +128,14 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
         .toLowerCase();
       return texto.includes(termo);
     });
+    // Na triagem, o que a IA já disse que vale a pena vem primeiro; o que ela
+    // disse que não vale vai para o fim. Dentro de cada grupo, a nota manda.
+    if (aba === "triagem") {
+      const peso = (d: DisputaCompleta) =>
+        ({ vale_a_pena: 0, talvez: 1, nao_vale: 3 } as const)[d.analise_ia?.veredito ?? "talvez"] + (d.analise_ia ? 0 : 1.5);
+      lista.sort((a, b) => peso(a) - peso(b) || b.score - a.score);
+    }
+    return lista;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disputas, aba, cliente, busca, uf, cidade]);
 

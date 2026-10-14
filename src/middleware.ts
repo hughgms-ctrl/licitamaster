@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 /**
  * Tudo é da mesa de operação e exige login, EXCETO:
  *   /c/<token>        portal do cliente — autenticado pelo token na URL
- *   /api/sync, /api/resumo, /api/alertas, /api/resultados   agendador — CRON_SECRET
+ *   /api/sync, /api/resumo, /api/alertas, /api/resultados, /api/automacao   agendador — CRON_SECRET
  *   /entrar, /criar-conta, /redefinir-senha, /auth/*   o próprio login
  *
  * Aqui só se confere que há uma sessão válida (e se renova o cookie dela).
@@ -57,5 +57,5 @@ function bloquear(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!c/|api/sync|api/resumo|api/alertas|api/resultados|entrar|criar-conta|redefinir-senha|auth/|_next/|favicon.ico).*)"],
+  matcher: ["/((?!c/|api/sync|api/resumo|api/alertas|api/resultados|api/automacao|entrar|criar-conta|redefinir-senha|auth/|_next/|favicon.ico).*)"],
 };

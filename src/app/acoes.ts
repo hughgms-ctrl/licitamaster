@@ -3,15 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { db, SELECT_DISPUTA_COMPLETA, type ClienteRow, type DisputaCompleta, type StatusDisputa } from "@/lib/db";
 import { exigirOperador } from "@/lib/auth";
-import { analisarLicitacao, lerEdital, redigirRecurso, type TipoRecurso } from "@/lib/ai";
-import { reunirPDFs } from "@/lib/edital";
-import { lerConfigIA } from "@/lib/config-ia";
+import { redigirRecurso, type TipoRecurso } from "@/lib/ai";
+import { analisarDisputa, lerEditalDisputa } from "@/lib/automacao";
 import type { FichaRow } from "@/lib/ficha";
 import { FASES, type GuiaMarcado } from "@/lib/guia";
 import type { ResultadoDisputa } from "@/lib/resultado";
 import type { ContratoDisputa } from "@/lib/contrato";
 import { consultarResultado, gravarResultado } from "@/lib/resultados-pncp";
-import { analisarPreco, type AnalisePreco, type Referencia } from "@/lib/preco";
+import type { AnalisePreco } from "@/lib/preco";
+import { analisarMercado, carregarReferencias } from "@/lib/referencias";
 import { convidarCliente } from "@/lib/notify";
 import { moverDisputa, registrarEvento, TRANSICOES_OPERADOR, urlPortal } from "@/lib/disputas";
 
@@ -118,29 +118,10 @@ export async function enviarAoCliente(disputaId: string): Promise<Saida> {
 /** Roda a análise da IA para esta licitação, no contexto deste cliente. */
 export async function analisar(disputaId: string): Promise<Saida & { analise?: DisputaCompleta["analise_ia"] }> {
   await exigirOperador();
-  const supabase = db();
   const d = await carregar(disputaId);
   if (!d) return { ok: false, mensagem: "Disputa não encontrada." };
-
-  // select("*"): a coluna de objetivos pode ainda não existir no banco
-  const { data: cliente } = await supabase
-    .from("clientes")
-    .select("*")
-    .eq("id", d.cliente_id)
-    .single<Pick<ClienteRow, "razao_social" | "porte" | "contexto" | "objetivos">>();
-  if (!cliente) return { ok: false, mensagem: "Cliente não encontrado." };
-
   try {
-    const analise = await analisarLicitacao(d.licitacao, cliente);
-    const { error } = await supabase.from("disputas").update({ analise_ia: analise }).eq("id", disputaId);
-    if (error) return { ok: false, mensagem: error.message };
-    await registrarEvento({
-      disputa_id: disputaId,
-      cliente_id: d.cliente_id,
-      ator: "operador",
-      tipo: "analise_ia",
-      dados: { veredito: analise.veredito },
-    });
+    const analise = await analisarDisputa(d, "operador");
     revalidatePath("/");
     return { ok: true, mensagem: "Análise pronta.", analise };
   } catch (e) {
@@ -210,41 +191,8 @@ export async function referenciaPreco(disputaId: string): Promise<Saida & { anal
   await exigirOperador();
   const d = await carregar(disputaId);
   if (!d) return { ok: false, mensagem: "Disputa não encontrada." };
-  const supabase = db();
-  const [{ data: oficiais }, { data: nossos }] = await Promise.all([
-    supabase
-      .from("resultados_pncp")
-      .select("licitacao_id, valor_estimado, valor_homologado, licitacao:licitacoes(objeto, orgao_razao_social, uf, modalidade_nome, valor_estimado)")
-      .eq("tem_resultado", true)
-      .neq("licitacao_id", d.licitacao_id)
-      .order("consultado_em", { ascending: false })
-      .limit(3000),
-    supabase
-      .from("resultados_disputa")
-      .select("disputa_id, vencedor_lance, licitacao_id, licitacao:licitacoes(objeto, orgao_razao_social, uf, modalidade_nome, valor_estimado)")
-      .not("vencedor_lance", "is", null)
-      .neq("licitacao_id", d.licitacao_id)
-      .limit(2000),
-  ]);
-  type L = { objeto: string | null; orgao_razao_social: string | null; uf: string | null; modalidade_nome: string | null; valor_estimado: number | null };
-  const refs: Referencia[] = [];
-  const vistas = new Set<string>();
-  for (const r of (nossos ?? []) as unknown as { licitacao_id: string; vencedor_lance: number; licitacao: L | null }[]) {
-    if (!r.licitacao?.valor_estimado) continue;
-    vistas.add(r.licitacao_id);
-    refs.push({ fonte: "nossa", objeto: r.licitacao.objeto ?? "", orgao: r.licitacao.orgao_razao_social, uf: r.licitacao.uf, modalidade: r.licitacao.modalidade_nome, estimado: r.licitacao.valor_estimado, vencedor: Number(r.vencedor_lance) });
-  }
-  for (const r of (oficiais ?? []) as unknown as { licitacao_id: string; valor_estimado: number | null; valor_homologado: number | null; licitacao: L | null }[]) {
-    if (vistas.has(r.licitacao_id) || !r.licitacao) continue;
-    const estimado = Number(r.valor_estimado ?? r.licitacao.valor_estimado ?? 0);
-    refs.push({ fonte: "pncp", objeto: r.licitacao.objeto ?? "", orgao: r.licitacao.orgao_razao_social, uf: r.licitacao.uf, modalidade: r.licitacao.modalidade_nome, estimado, vencedor: Number(r.valor_homologado ?? 0) });
-  }
-  return {
-    ok: true,
-    mensagem: "",
-    base: refs.length,
-    analise: analisarPreco({ objeto: d.licitacao.objeto, uf: d.licitacao.uf, modalidade: d.licitacao.modalidade_nome }, refs),
-  };
+  const refs = await carregarReferencias(db(), d.licitacao_id);
+  return { ok: true, mensagem: "", base: refs.length, analise: analisarMercado(d.licitacao, refs) };
 }
 
 /** Rascunho de intenção de recurso, razões ou contrarrazões, pela IA. */
@@ -390,28 +338,8 @@ export async function lerEditalAcao(disputaId: string): Promise<Saida & { ficha?
   await exigirOperador();
   const d = await carregar(disputaId);
   if (!d) return { ok: false, mensagem: "Disputa não encontrada." };
-
   try {
-    const { pdfs, lidos, ignorados } = await reunirPDFs(d.licitacao);
-    const ficha = await lerEdital(d.licitacao, pdfs);
-    const cfg = await lerConfigIA();
-    const linha: FichaRow = {
-      licitacao_id: d.licitacao_id,
-      ficha,
-      arquivos_lidos: lidos,
-      versao_pncp: d.licitacao.data_atualizacao_pncp,
-      modelo: cfg?.modelo ?? null,
-      gerado_em: new Date().toISOString(),
-    };
-    const { error } = await db().from("fichas_edital").upsert(linha);
-    if (error) return { ok: false, mensagem: error.message };
-    await registrarEvento({
-      disputa_id: disputaId,
-      cliente_id: d.cliente_id,
-      ator: "operador",
-      tipo: "edital_lido",
-      dados: { arquivos: lidos.map((l) => l.titulo), ignorados: ignorados.length },
-    });
+    const { linha, lidos, ignorados } = await lerEditalDisputa(d, "operador");
     revalidatePath("/");
     return {
       ok: true,

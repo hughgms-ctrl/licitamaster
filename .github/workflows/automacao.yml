@@ -1,0 +1,36 @@
+name: Análise automática
+
+# Depois de cada coleta: a IA faz a análise rápida das melhores licitações da
+# triagem e lê o edital das que o cliente aprovou. Nada é enviado ao cliente:
+# o operador continua decidindo o que vai para ele.
+on:
+  schedule:
+    # 30 minutos depois da coleta (7h37 e 19h37 de Brasília)
+    - cron: "37 10,22 * * *"
+  workflow_dispatch:
+
+jobs:
+  analisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Chamar /api/automacao
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -uo pipefail
+          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Faltam os secrets APP_URL e/ou CRON_SECRET no repositório."
+            exit 1
+          fi
+          corpo=$(curl -sS --max-time 330 -w '\n%{http_code}' \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL%/}/api/automacao")
+          http=$(printf '%s' "$corpo" | tail -n1)
+          echo "HTTP $http"
+          printf '%s\n' "$corpo" | sed '$d'
+          if [ "$http" != "200" ]; then
+            echo "::error::A análise automática não passou (HTTP $http)."
+            exit 1
+          fi

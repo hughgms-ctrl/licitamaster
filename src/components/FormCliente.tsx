@@ -54,6 +54,19 @@ export default function FormCliente({
       </Secao>
 
       <Secao
+        titulo="Para a proposta de preços"
+        descricao="Vão no cabeçalho e na assinatura da proposta. Quem assina é o representante legal (sócio ou procurador)."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Campo nome="endereco" rotulo="Endereço" valor={cliente?.endereco} dica="Rua, número, bairro e CEP." />
+          <Campo nome="cidade_uf" rotulo="Cidade/UF" valor={cliente?.cidade_uf} dica="ex: Vitória/ES" />
+          <Campo nome="representante_nome" rotulo="Representante legal" valor={cliente?.representante_nome} />
+          <Campo nome="representante_cpf" rotulo="CPF do representante" valor={cliente?.representante_cpf} />
+          <Campo nome="representante_cargo" rotulo="Cargo" valor={cliente?.representante_cargo} dica="ex: Sócio-administrador" />
+        </div>
+      </Secao>
+
+      <Secao
         titulo="O que a empresa faz"
         descricao={
           <>

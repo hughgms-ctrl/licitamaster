@@ -34,6 +34,8 @@ export interface FichaEdital {
   clausulas_restritivas: { clausula: string; por_que: string; referencia: string | null }[];
   perguntas_esclarecimento: string[];
   penalidades: string[];
+  /** o que o edital exige na proposta de preços (fichas antigas não têm) */
+  proposta?: { colunas: string[]; declaracoes: string[]; observacoes: string[] };
 }
 
 export interface FichaRow {

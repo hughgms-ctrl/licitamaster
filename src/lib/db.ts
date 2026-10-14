@@ -25,6 +25,12 @@ export interface ClienteRow {
   porte: Porte;
   contato_nome: string | null;
   whatsapp: string | null;
+  /** para a proposta de preços (podem não existir antes da migration) */
+  endereco?: string | null;
+  cidade_uf?: string | null;
+  representante_nome?: string | null;
+  representante_cpf?: string | null;
+  representante_cargo?: string | null;
   email: string | null;
   contexto: string;
   ativo: boolean;

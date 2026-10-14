@@ -203,6 +203,28 @@ export async function salvarResultado(
   return { ok: true, mensagem: "Resultado registrado." };
 }
 
+/** Guarda a proposta ajustada como o operador deixou na tela. */
+export async function salvarProposta(disputaId: string, dados: unknown, total: number): Promise<Saida> {
+  const eu = await exigirOperador();
+  const json = JSON.stringify(dados ?? {});
+  if (json.length > 500_000) return { ok: false, mensagem: "Proposta grande demais para salvar." };
+  const { data: existe } = await db().from("disputas").select("id").eq("id", disputaId).maybeSingle();
+  if (!existe) return { ok: false, mensagem: "Disputa não encontrada." };
+  const { error } = await db()
+    .from("propostas_disputa")
+    .upsert(
+      {
+        disputa_id: disputaId,
+        dados: JSON.parse(json),
+        total: Number.isFinite(total) ? Math.round(total * 100) / 100 : null,
+        salvo_por: eu.email,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "disputa_id" }
+    );
+  return error ? { ok: false, mensagem: error.message } : { ok: true, mensagem: "Proposta salva." };
+}
+
 /** Marca ou desmarca um passo do guia da disputa. */
 export async function marcarPassoGuia(disputaId: string, chave: string, feito: boolean): Promise<Saida> {
   await exigirOperador();

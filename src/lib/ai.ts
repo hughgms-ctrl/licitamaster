@@ -370,6 +370,11 @@ Regras:
 7. Datas e horas no formato "dd/mm/aaaa hh:mm" quando houver hora.
 8. resumo: 3 a 4 frases técnicas. resumo_cliente: 2 a 3 frases simples para um dono de pequena
    empresa, sem siglas nem juridiquês: o que teria de entregar, onde, por quanto tempo.
+9. Em "proposta", o que o edital exige na proposta de preços (geralmente num anexo "modelo de proposta"):
+   colunas pedidas além de item, descrição, quantidade, unidade, valor unitário e total (ex: "marca",
+   "fabricante", "prazo de garantia", "BDI"); as declarações que precisam constar NA PROPOSTA, com o
+   texto do edital resumido em uma frase cada; e outras exigências de forma (ex: "valores com duas casas
+   decimais", "assinada digitalmente", "planilha de composição de custos").
 
 Responda SOMENTE com JSON válido, sem markdown, neste formato:
 {
@@ -388,7 +393,8 @@ Responda SOMENTE com JSON válido, sem markdown, neste formato:
   "riscos": ["..."],
   "clausulas_restritivas": [{"clausula": "...", "por_que": "...", "referencia": "item 8.3 (p. 14)" | null}],
   "perguntas_esclarecimento": ["pergunta que vale mandar ao pregoeiro"],
-  "penalidades": ["..."]
+  "penalidades": ["..."],
+  "proposta": {"colunas": ["..."], "declaracoes": ["..."], "observacoes": ["..."]}
 }
 
 Em "itens", siga a ordem e a numeração do edital. "quantidade" começa pelo número seguido da unidade
@@ -439,6 +445,11 @@ Em "itens", siga a ordem e a numeração do edital. "quantidade" começa pelo n�
     clausulas_restritivas: f.clausulas_restritivas ?? [],
     perguntas_esclarecimento: f.perguntas_esclarecimento ?? [],
     penalidades: f.penalidades ?? [],
+    proposta: {
+      colunas: Array.isArray(f.proposta?.colunas) ? f.proposta.colunas.slice(0, 10) : [],
+      declaracoes: Array.isArray(f.proposta?.declaracoes) ? f.proposta.declaracoes.slice(0, 20) : [],
+      observacoes: Array.isArray(f.proposta?.observacoes) ? f.proposta.observacoes.slice(0, 20) : [],
+    },
   };
 }
 

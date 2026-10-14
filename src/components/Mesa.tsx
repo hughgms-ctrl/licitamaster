@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   BookOpen,
+  FileSpreadsheet,
   Gavel,
   ExternalLink,
   FileSearch,
@@ -659,6 +660,15 @@ function Item({
             >
               <Gavel />
               {abrirResultado ? "Fechar lances" : resultado ? "Lances registrados" : "Registrar lances"}
+            </Button>
+          )}
+
+          {["proposta_enviada", "em_disputa", "ganhou"].includes(d.status) && (
+            <Button size="sm" variant="outline" asChild>
+              <a href={`/disputas/${d.id}/proposta`} target="_blank" rel="noreferrer">
+                <FileSpreadsheet />
+                Proposta ajustada
+              </a>
             </Button>
           )}
 

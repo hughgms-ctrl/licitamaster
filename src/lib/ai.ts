@@ -375,7 +375,7 @@ Responda SOMENTE com JSON válido, sem markdown, neste formato:
 {
   "resumo": "...",
   "resumo_cliente": "...",
-  "itens": [{"descricao": "...", "quantidade": "12 meses" | null, "valor_estimado": 1234.56 | null}],
+  "itens": [{"descricao": "...", "quantidade": "600 horas" | null, "valor_estimado": 1234.56 | null}],
   "sessao": {"data_hora": "...", "plataforma": "Compras.gov.br | BLL | Portal de Compras Públicas | ...", "link": "...", "modo_disputa": "aberto | aberto e fechado | ...", "criterio_julgamento": "menor preço por item | ..."},
   "exclusiva_me_epp": "sim" | "nao" | "parcial" | "nao_informado",
   "prazos": {"impugnacao": "...", "esclarecimentos": "...", "entrega_execucao": "...", "vigencia": "...", "pagamento": "...", "validade_proposta": "..."},
@@ -391,7 +391,9 @@ Responda SOMENTE com JSON válido, sem markdown, neste formato:
   "penalidades": ["..."]
 }
 
-Liste no máximo 30 itens em "itens" (os de maior valor, se houver mais).`;
+Em "itens", siga a ordem e a numeração do edital. "quantidade" começa pelo número seguido da unidade
+("600 horas", "12 meses", "1.200 unidades"). "valor_estimado" é o valor TOTAL estimado do item
+(quantidade × valor unitário), não o unitário. Liste até 60 itens; se houver mais, os 60 primeiros.`;
 
   const texto = await chamarIA({
     prompt,
@@ -407,7 +409,7 @@ Liste no máximo 30 itens em "itens" (os de maior valor, se houver mais).`;
   return {
     resumo: f.resumo ?? "",
     resumo_cliente: f.resumo_cliente ?? f.resumo ?? "",
-    itens: Array.isArray(f.itens) ? f.itens.slice(0, 30) : [],
+    itens: Array.isArray(f.itens) ? f.itens.slice(0, 60) : [],
     sessao: {
       data_hora: f.sessao?.data_hora ?? null,
       plataforma: f.sessao?.plataforma ?? null,

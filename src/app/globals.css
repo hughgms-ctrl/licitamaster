@@ -108,3 +108,21 @@
     @apply underline-offset-4;
   }
 }
+
+/* Impressão (proposta ajustada): folha A4, fundo branco em qualquer tema. */
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm 14mm;
+  }
+  html {
+    font-size: 100%;
+  }
+  body {
+    background: #fff !important;
+    color: #18181b;
+  }
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+}

@@ -496,3 +496,53 @@ que não vence (contrato social, cartão CNPJ, atestado), use null.`;
     observacao: r.observacao ?? "",
   };
 }
+
+export type TipoRecurso = "intencao" | "razoes" | "contrarrazoes";
+
+/**
+ * Rascunho de recurso administrativo (Lei 14.133/2021, art. 165). É um
+ * rascunho para o operador revisar: a IA é proibida de inventar
+ * jurisprudência e marca com [conferir] o que precisa de checagem.
+ */
+export async function redigirRecurso(opts: {
+  tipo: TipoRecurso;
+  fatos: string;
+  empresa: string;
+  orgao: string | null;
+  objeto: string | null;
+  modalidade: string | null;
+  resumoEdital: string | null;
+  exigencias: string[];
+}): Promise<string> {
+  const pedido = {
+    intencao:
+      "uma INTENÇÃO DE RECURSO: 2 a 4 frases objetivas, para colar no campo do sistema logo após o resultado, dizendo contra qual decisão e o motivo resumido.",
+    razoes:
+      "as RAZÕES DE RECURSO completas, com: endereçamento ao(à) pregoeiro(a)/agente de contratação, qualificação da recorrente, tempestividade, síntese dos fatos, fundamentos (cláusulas do edital e Lei 14.133/2021) e pedidos.",
+    contrarrazoes:
+      "as CONTRARRAZÕES ao recurso de um concorrente, defendendo a decisão que favoreceu a nossa empresa, com: endereçamento, síntese do recurso, fundamentos e pedido de manutenção da decisão.",
+  }[opts.tipo];
+
+  const prompt = `Você é advogado(a) especialista em licitações públicas no Brasil (Lei 14.133/2021).
+Escreva ${pedido}
+
+EMPRESA (nossa cliente): ${opts.empresa}
+ÓRGÃO: ${opts.orgao ?? "[órgão]"}
+MODALIDADE: ${opts.modalidade ?? "[modalidade]"}
+OBJETO: ${opts.objeto ?? "[objeto]"}
+RESUMO DO EDITAL: ${opts.resumoEdital ?? "não disponível"}
+EXIGÊNCIAS DE HABILITAÇÃO E TÉCNICAS DO EDITAL:
+${opts.exigencias.length ? opts.exigencias.map((e) => `- ${e}`).join("\n") : "- não disponíveis"}
+
+O QUE ACONTECEU (relato do operador):
+${opts.fatos}
+
+Regras:
+1. Use só os fatos acima. O que faltar (número do processo, datas, nomes), deixe como [completar].
+2. NÃO invente jurisprudência, números de acórdão, súmulas nem artigos de que não tenha certeza. Se citar
+   algo além da Lei 14.133/2021, marque com [conferir].
+3. Linguagem formal e direta, sem exageros. Português do Brasil.
+4. Responda só com o texto do documento, sem comentários antes ou depois.`;
+
+  return (await chamarIA({ prompt, maxTokens: 6000, esforco: "medium", timeoutMs: 120_000 })).trim();
+}

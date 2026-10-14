@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   BookOpen,
+  MoreHorizontal,
+  Scale,
+  TrendingDown,
   FileCheck2,
   FileSpreadsheet,
   Gavel,
@@ -31,6 +34,8 @@ import FichaEdital from "./FichaEdital";
 import RoteiroDisputa from "./RoteiroDisputa";
 import RegistroLances from "./RegistroLances";
 import ContratoPainel from "./ContratoPainel";
+import PrecoReferencia from "./PrecoReferencia";
+import RecursoPainel from "./RecursoPainel";
 import type { ContratoDisputa } from "@/lib/contrato";
 import { ETAPAS_COM_RESULTADO, type ResultadoDisputa } from "@/lib/resultado";
 import { ETAPAS_COM_GUIA } from "@/lib/guia";
@@ -48,6 +53,7 @@ import { StatStrip } from "./ui/stat-strip";
 import { Aviso } from "./ui/aviso";
 import { Vazio } from "./ui/vazio";
 import { useConfirmar } from "./ui/confirmar";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
 /**
  * As abas seguem o caminho da disputa. Cada uma é uma pergunta diferente:
@@ -388,6 +394,8 @@ function Item({
   const [abrirResultado, setAbrirResultado] = useState(false);
   const [contrato, setContrato] = useState<ContratoDisputa | null>(contratoInicial);
   const [abrirContrato, setAbrirContrato] = useState(false);
+  const [abrirPreco, setAbrirPreco] = useState(false);
+  const [abrirRecurso, setAbrirRecurso] = useState(false);
   const [lendo, setLendo] = useState(false);
   const [notas, setNotas] = useState(d.notas_operador ?? "");
   const [confirmar, dialogo] = useConfirmar();
@@ -444,6 +452,70 @@ function Item({
 
   const prazo = calcularPrazo(l.data_encerramento_proposta, agora, d.status);
   const local = [l.municipio, l.uf].filter(Boolean).join("/");
+
+  // Triagem e espera do cliente mostram tudo; depois da aprovação, o que é
+  // de consulta (análise, preço, recurso, edital) vai para o menu "Mais".
+  const triagem = ["sugerida", "recusada", "descartada", "aguardando_cliente"].includes(d.status);
+  const mostrar = (k: "analise") => (k === "analise" ? triagem : true);
+  function botaoAnaliseAcao() {
+    rodar(
+      () => analisar(d.id),
+      (s) => {
+        const a = (s as Saida & { analise?: AnaliseIA }).analise;
+        if (a) atualizar(d.id, { analise_ia: a });
+        setAbrirAnalise(true);
+      }
+    );
+  }
+  const botaoAnalise = (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={pendente}
+      aria-expanded={d.analise_ia ? abrirAnalise : undefined}
+      onClick={() => (d.analise_ia ? setAbrirAnalise((x) => !x) : botaoAnaliseAcao())}
+    >
+      {pendente && !d.analise_ia ? <Loader2 className="animate-spin" /> : <Sparkles />}
+      {d.analise_ia
+        ? abrirAnalise
+          ? "Fechar análise"
+          : `Análise: ${rotuloVeredito(d.analise_ia.veredito)}`
+        : pendente
+          ? "Analisando…"
+          : "Analisar com IA"}
+    </Button>
+  );
+  const extras: { chave: string; icone: React.ReactNode; rotulo: string; acao?: () => void; href?: string; noMenu: boolean }[] = [];
+  if (l.valor_estimado && ["sugerida", "aguardando_cliente", "aprovada", "em_preparacao", "proposta_enviada", "em_disputa"].includes(d.status)) {
+    extras.push({
+      chave: "preco",
+      icone: <TrendingDown />,
+      rotulo: abrirPreco ? "Fechar preço" : "Preço de referência",
+      acao: () => setAbrirPreco((x) => !x),
+      noMenu: ["proposta_enviada", "em_disputa"].includes(d.status),
+    });
+  }
+  if (["proposta_enviada", "em_disputa", "ganhou"].includes(d.status)) {
+    extras.push({
+      chave: "proposta",
+      icone: <FileSpreadsheet />,
+      rotulo: "Proposta ajustada",
+      href: `/disputas/${d.id}/proposta`,
+      noMenu: d.status !== "em_disputa",
+    });
+  }
+  if (["em_disputa", "ganhou", "perdeu"].includes(d.status)) {
+    extras.push({
+      chave: "recurso",
+      icone: <Scale />,
+      rotulo: abrirRecurso ? "Fechar recurso" : "Recurso",
+      acao: () => setAbrirRecurso((x) => !x),
+      noMenu: d.status !== "perdeu",
+    });
+  }
+  if (l.link_pncp || l.link_sistema_origem) {
+    extras.push({ chave: "edital", icone: <ExternalLink />, rotulo: "Abrir edital", href: (l.link_pncp ?? l.link_sistema_origem)!, noMenu: !triagem });
+  }
 
   return (
     <article className="flex gap-4 p-4 sm:p-5">
@@ -534,6 +606,8 @@ function Item({
           </div>
         )}
 
+        {abrirPreco && <PrecoReferencia d={d} />}
+        {abrirRecurso && <RecursoPainel d={d} />}
         {abrirGuia && <RoteiroDisputa d={d} ficha={ficha} />}
         {abrirResultado && <RegistroLances d={d} inicial={resultado} salvo={setResultado} />}
         {abrirContrato && (
@@ -617,33 +691,7 @@ function Item({
               botaoEtapa(para, "default")
             ))}
 
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={pendente}
-            aria-expanded={d.analise_ia ? abrirAnalise : undefined}
-            onClick={() =>
-              d.analise_ia
-                ? setAbrirAnalise((x) => !x)
-                : rodar(
-                    () => analisar(d.id),
-                    (s) => {
-                      const a = (s as Saida & { analise?: AnaliseIA }).analise;
-                      if (a) atualizar(d.id, { analise_ia: a });
-                      setAbrirAnalise(true);
-                    }
-                  )
-            }
-          >
-            {pendente && !d.analise_ia ? <Loader2 className="animate-spin" /> : <Sparkles />}
-            {d.analise_ia
-              ? abrirAnalise
-                ? "Fechar análise"
-                : `Análise: ${rotuloVeredito(d.analise_ia.veredito)}`
-              : pendente
-                ? "Analisando…"
-                : "Analisar com IA"}
-          </Button>
+          {mostrar("analise") && botaoAnalise}
 
           {(ficha || !podeEnviar) && (
           <Button
@@ -688,15 +736,6 @@ function Item({
             </Button>
           )}
 
-          {["proposta_enviada", "em_disputa", "ganhou"].includes(d.status) && (
-            <Button size="sm" variant="outline" asChild>
-              <a href={`/disputas/${d.id}/proposta`} target="_blank" rel="noreferrer">
-                <FileSpreadsheet />
-                Proposta ajustada
-              </a>
-            </Button>
-          )}
-
           {ETAPAS_COM_GUIA.includes(d.status) && (
             <Button size="sm" variant="outline" aria-expanded={abrirGuia} onClick={() => setAbrirGuia((x) => !x)}>
               <BookOpen />
@@ -704,13 +743,54 @@ function Item({
             </Button>
           )}
 
-          {(l.link_pncp || l.link_sistema_origem) && (
-            <Button size="sm" variant="ghost" asChild>
-              <a href={l.link_pncp ?? l.link_sistema_origem!} target="_blank" rel="noreferrer">
-                <ExternalLink />
-                Abrir edital
-              </a>
+          {extras.filter((x) => !x.noMenu).map((x) => (
+            <Button key={x.chave} size="sm" variant={x.chave === "edital" ? "ghost" : "outline"} asChild={!!x.href} onClick={x.href ? undefined : x.acao}>
+              {x.href ? (
+                <a href={x.href} target="_blank" rel="noreferrer">
+                  {x.icone}
+                  {x.rotulo}
+                </a>
+              ) : (
+                <>
+                  {x.icone}
+                  {x.rotulo}
+                </>
+              )}
             </Button>
+          ))}
+
+          {!triagem && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="ghost" aria-label="Mais ações">
+                  <MoreHorizontal />
+                  Mais
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onSelect={() => (d.analise_ia ? setAbrirAnalise((x) => !x) : botaoAnaliseAcao())}>
+                  <Sparkles />
+                  {d.analise_ia ? (abrirAnalise ? "Fechar análise" : `Análise: ${rotuloVeredito(d.analise_ia.veredito)}`) : "Analisar com IA"}
+                </DropdownMenuItem>
+                {extras
+                  .filter((x) => x.noMenu)
+                  .map((x) =>
+                    x.href ? (
+                      <DropdownMenuItem key={x.chave} asChild>
+                        <a href={x.href} target="_blank" rel="noreferrer">
+                          {x.icone}
+                          {x.rotulo}
+                        </a>
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem key={x.chave} onSelect={x.acao}>
+                        {x.icone}
+                        {x.rotulo}
+                      </DropdownMenuItem>
+                    )
+                  )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
 
           <span className="flex-1" />

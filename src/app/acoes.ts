@@ -3,13 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { db, SELECT_DISPUTA_COMPLETA, type ClienteRow, type DisputaCompleta, type StatusDisputa } from "@/lib/db";
 import { exigirOperador } from "@/lib/auth";
-import { analisarLicitacao, lerEdital } from "@/lib/ai";
+import { analisarLicitacao, lerEdital, redigirRecurso, type TipoRecurso } from "@/lib/ai";
 import { reunirPDFs } from "@/lib/edital";
 import { lerConfigIA } from "@/lib/config-ia";
 import type { FichaRow } from "@/lib/ficha";
 import { FASES, type GuiaMarcado } from "@/lib/guia";
 import type { ResultadoDisputa } from "@/lib/resultado";
 import type { ContratoDisputa } from "@/lib/contrato";
+import { consultarResultado, gravarResultado } from "@/lib/resultados-pncp";
+import { analisarPreco, type AnalisePreco, type Referencia } from "@/lib/preco";
 import { convidarCliente } from "@/lib/notify";
 import { moverDisputa, registrarEvento, TRANSICOES_OPERADOR, urlPortal } from "@/lib/disputas";
 
@@ -202,6 +204,106 @@ export async function salvarResultado(
     dados: { nosso_lance: linha.nosso_lance, vencedor_lance: linha.vencedor_lance, posicao: linha.posicao },
   });
   return { ok: true, mensagem: "Resultado registrado." };
+}
+
+/**
+ * Referências de preço para uma licitação: resultados oficiais do PNCP e os
+ * nossos registros de lances, filtrados pelos parecidos.
+ */
+export async function referenciaPreco(disputaId: string): Promise<Saida & { analise?: AnalisePreco; base?: number }> {
+  await exigirOperador();
+  const d = await carregar(disputaId);
+  if (!d) return { ok: false, mensagem: "Disputa não encontrada." };
+  const supabase = db();
+  const [{ data: oficiais }, { data: nossos }] = await Promise.all([
+    supabase
+      .from("resultados_pncp")
+      .select("licitacao_id, valor_estimado, valor_homologado, licitacao:licitacoes(objeto, orgao_razao_social, uf, modalidade_nome, valor_estimado)")
+      .eq("tem_resultado", true)
+      .neq("licitacao_id", d.licitacao_id)
+      .order("consultado_em", { ascending: false })
+      .limit(3000),
+    supabase
+      .from("resultados_disputa")
+      .select("disputa_id, vencedor_lance, licitacao_id, licitacao:licitacoes(objeto, orgao_razao_social, uf, modalidade_nome, valor_estimado)")
+      .not("vencedor_lance", "is", null)
+      .neq("licitacao_id", d.licitacao_id)
+      .limit(2000),
+  ]);
+  type L = { objeto: string | null; orgao_razao_social: string | null; uf: string | null; modalidade_nome: string | null; valor_estimado: number | null };
+  const refs: Referencia[] = [];
+  const vistas = new Set<string>();
+  for (const r of (nossos ?? []) as unknown as { licitacao_id: string; vencedor_lance: number; licitacao: L | null }[]) {
+    if (!r.licitacao?.valor_estimado) continue;
+    vistas.add(r.licitacao_id);
+    refs.push({ fonte: "nossa", objeto: r.licitacao.objeto ?? "", orgao: r.licitacao.orgao_razao_social, uf: r.licitacao.uf, modalidade: r.licitacao.modalidade_nome, estimado: r.licitacao.valor_estimado, vencedor: Number(r.vencedor_lance) });
+  }
+  for (const r of (oficiais ?? []) as unknown as { licitacao_id: string; valor_estimado: number | null; valor_homologado: number | null; licitacao: L | null }[]) {
+    if (vistas.has(r.licitacao_id) || !r.licitacao) continue;
+    const estimado = Number(r.valor_estimado ?? r.licitacao.valor_estimado ?? 0);
+    refs.push({ fonte: "pncp", objeto: r.licitacao.objeto ?? "", orgao: r.licitacao.orgao_razao_social, uf: r.licitacao.uf, modalidade: r.licitacao.modalidade_nome, estimado, vencedor: Number(r.valor_homologado ?? 0) });
+  }
+  return {
+    ok: true,
+    mensagem: "",
+    base: refs.length,
+    analise: analisarPreco({ objeto: d.licitacao.objeto, uf: d.licitacao.uf, modalidade: d.licitacao.modalidade_nome }, refs),
+  };
+}
+
+/** Rascunho de intenção de recurso, razões ou contrarrazões, pela IA. */
+export async function gerarRecurso(disputaId: string, tipo: TipoRecurso, fatos: string): Promise<Saida & { texto?: string }> {
+  await exigirOperador();
+  if (!["intencao", "razoes", "contrarrazoes"].includes(tipo)) return { ok: false, mensagem: "Tipo inválido." };
+  if (fatos.trim().length < 20) return { ok: false, mensagem: "Conte o que aconteceu com um pouco mais de detalhe." };
+  const d = await carregar(disputaId);
+  if (!d) return { ok: false, mensagem: "Disputa não encontrada." };
+  const { data: f } = await db().from("fichas_edital").select("ficha").eq("licitacao_id", d.licitacao_id).maybeSingle<Pick<FichaRow, "ficha">>();
+  try {
+    const texto = await redigirRecurso({
+      tipo,
+      fatos: fatos.slice(0, 6000),
+      empresa: d.cliente.razao_social,
+      orgao: d.licitacao.orgao_razao_social,
+      objeto: d.licitacao.objeto,
+      modalidade: d.licitacao.modalidade_nome,
+      resumoEdital: f?.ficha.resumo ?? null,
+      exigencias: [...(f?.ficha.exigencias_tecnicas ?? []), ...(f?.ficha.documentos_exigidos ?? []).map((x) => `${x.tipo}: ${x.detalhe}`)].slice(0, 40),
+    });
+    await registrarEvento({ disputa_id: disputaId, cliente_id: d.cliente_id, ator: "operador", tipo: "recurso_redigido", dados: { tipo } });
+    return { ok: true, mensagem: "Rascunho pronto. Revise antes de enviar.", texto };
+  } catch (e) {
+    return { ok: false, mensagem: (e as Error).message };
+  }
+}
+
+/** Consulta agora o resultado oficial no PNCP e grava para a inteligência de preço. */
+export async function buscarResultadoOficial(
+  disputaId: string
+): Promise<Saida & { vencedor?: string | null; valor?: number | null; temResultado?: boolean }> {
+  await exigirOperador();
+  const d = await carregar(disputaId);
+  if (!d) return { ok: false, mensagem: "Disputa não encontrada." };
+  try {
+    const r = await consultarResultado(d.licitacao);
+    await gravarResultado(r);
+    if (!r.tem_resultado) {
+      return { ok: true, temResultado: false, mensagem: "O PNCP ainda não publicou o resultado desta licitação. Tente de novo em alguns dias." };
+    }
+    // vencedor: o fornecedor com mais valor homologado
+    const porFornecedor = new Map<string, number>();
+    for (const i of r.itens) if (i.fornecedor && i.homologado) porFornecedor.set(i.fornecedor, (porFornecedor.get(i.fornecedor) ?? 0) + i.homologado);
+    const vencedor = [...porFornecedor.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    return {
+      ok: true,
+      temResultado: true,
+      vencedor,
+      valor: r.valor_homologado,
+      mensagem: `Resultado oficial: ${vencedor ?? "fornecedor não informado"}${r.valor_homologado ? `, total homologado de R$ ${r.valor_homologado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : ""}.`,
+    };
+  } catch (e) {
+    return { ok: false, mensagem: `Não deu para consultar o PNCP: ${(e as Error).message}` };
+  }
 }
 
 /** Salva o contrato de uma disputa ganha (dados e eventos, tudo de uma vez). */

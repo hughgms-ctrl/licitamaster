@@ -1,0 +1,31 @@
+name: Resultados do PNCP
+
+# Uma vez por dia: consulta no PNCP o resultado oficial (valor homologado e
+# vencedor) das licitações encerradas. Alimenta a inteligência de preço.
+on:
+  schedule:
+    # 3h de Brasília, todos os dias (UTC-3)
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  resultados:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar /api/resultados
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -uo pipefail
+          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Faltam os secrets APP_URL e/ou CRON_SECRET no repositório."
+            exit 1
+          fi
+          corpo=$(curl -sS --max-time 320 -w '\n%{http_code}' \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL%/}/api/resultados")
+          http=$(printf '%s' "$corpo" | tail -n1)
+          echo "HTTP $http"
+          printf '%s' "$corpo" | sed '$d'
+          [ "$http" = "200" ] || { echo "::error::A consulta de resultados falhou (HTTP $http)."; exit 1; }

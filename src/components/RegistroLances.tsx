@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Gavel, Loader2, Pencil, Plus, X } from "lucide-react";
-import { salvarResultado } from "@/app/acoes";
+import { Gavel, Landmark, Loader2, Pencil, Plus, X } from "lucide-react";
+import { buscarResultadoOficial, salvarResultado } from "@/app/acoes";
 import type { DisputaCompleta } from "@/lib/db";
 import { formatarData, formatarValor } from "@/lib/formato";
 import { lerReais, reaisParaTexto, type ResultadoDisputa } from "@/lib/resultado";
@@ -47,6 +47,8 @@ export default function RegistroLances({
   const [obs, setObs] = useState(inicial?.observacao ?? "");
   const [saida, setSaida] = useState<{ ok: boolean; mensagem: string } | null>(null);
   const [pendente, iniciar] = useTransition();
+  const [buscando, iniciarBusca] = useTransition();
+  const [oficial, setOficial] = useState<string | null>(null);
 
   const nossoN = lerReais(nosso);
   const vencedorN = ganhou ? nossoN : lerReais(lanceVencedor);
@@ -137,6 +139,32 @@ export default function RegistroLances({
         <Campo rotulo="Participantes">
           <Input className="num" type="number" min={1} placeholder="ex: 3" value={participantes} onChange={(e) => setParticipantes(e.target.value)} />
         </Campo>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={buscando}
+          onClick={() =>
+            iniciarBusca(async () => {
+              try {
+                const r = await buscarResultadoOficial(d.id);
+                setOficial(r.mensagem);
+                if (r.temResultado && !ganhou) {
+                  if (r.vencedor && !vencedor) setVencedor(r.vencedor);
+                  if (r.valor && !lanceVencedor) setLanceVencedor(reaisParaTexto(r.valor));
+                }
+              } catch (e) {
+                setOficial((e as Error).message);
+              }
+            })
+          }
+        >
+          {buscando ? <Loader2 className="animate-spin" /> : <Landmark />}
+          Buscar resultado oficial no PNCP
+        </Button>
+        {oficial && <span className="text-xs text-muted-foreground">{oficial}</span>}
       </div>
 
       {!ganhou && (

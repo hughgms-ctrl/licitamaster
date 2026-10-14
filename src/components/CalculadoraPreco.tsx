@@ -24,6 +24,7 @@ const lerPct = (s: string) => {
 export default function CalculadoraPreco({
   estimado,
   assessoriaPct,
+  lucroPct,
   usar,
   rotuloUsar = "Usar como preço mínimo",
   className,
@@ -31,6 +32,8 @@ export default function CalculadoraPreco({
   estimado: number | null;
   /** taxa de êxito da assessoria, já preenchida quando se sabe */
   assessoriaPct?: number | null;
+  /** lucro mínimo dos objetivos do cliente, já preenchido quando se sabe */
+  lucroPct?: number | null;
   usar?: (valor: number) => void;
   rotuloUsar?: string;
   className?: string;
@@ -42,7 +45,7 @@ export default function CalculadoraPreco({
   const [assessoria, setAssessoria] = useState(assessoriaPct != null ? String(assessoriaPct).replace(".", ",") : "");
   const [despesas, setDespesas] = useState("");
   const [lucroTipo, setLucroTipo] = useState<"pct" | "reais">("pct");
-  const [lucro, setLucro] = useState("");
+  const [lucro, setLucro] = useState(lucroPct != null ? String(lucroPct).replace(".", ",") : "");
   const [usado, setUsado] = useState(false);
 
   const entrada: EntradaPreco = {

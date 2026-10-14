@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { Loader2 } from "lucide-react";
 import type { ClienteRow } from "@/lib/db";
+import { ROTULO_ESTRATEGIA, ROTULO_RISCO } from "@/lib/objetivos";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -84,6 +85,48 @@ export default function FormCliente({
         />
       </Secao>
 
+      <Secao
+        titulo="Objetivos do cliente"
+        descricao="Antes de disputar, saiba onde ele quer chegar. A IA usa isto para dizer se cada licitação serve, e a calculadora de preço já vem com o lucro mínimo."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <CampoBase rotulo="Perfil de atuação" dica="Sniper combina com equipe pequena; força bruta pede mais gente e organização.">
+            <NativeSelect name="obj_estrategia" defaultValue={cliente?.objetivos?.estrategia ?? ""}>
+              <option value="">Ainda não definido</option>
+              {Object.entries(ROTULO_ESTRATEGIA).map(([v, r]) => (
+                <option key={v} value={v}>
+                  {r}
+                </option>
+              ))}
+            </NativeSelect>
+          </CampoBase>
+          <CampoBase rotulo="Risco que aceita">
+            <NativeSelect name="obj_risco" defaultValue={cliente?.objetivos?.risco ?? ""}>
+              <option value="">Ainda não definido</option>
+              {Object.entries(ROTULO_RISCO).map(([v, r]) => (
+                <option key={v} value={v}>
+                  {r}
+                </option>
+              ))}
+            </NativeSelect>
+          </CampoBase>
+          <Campo
+            nome="obj_capital"
+            rotulo="Capital para bancar entregas (R$)"
+            valor={numeroTexto(cliente?.objetivos?.capital)}
+            dica="O órgão paga depois da entrega. Quanto ele consegue adiantar de compra e mão de obra?"
+          />
+          <Campo
+            nome="obj_lucro_pct"
+            rotulo="Lucro mínimo por venda (%)"
+            valor={numeroTexto(cliente?.objetivos?.lucro_pct)}
+            dica="Abaixo disso não vale a pena. Vai direto para a calculadora de preço."
+          />
+          <Campo nome="obj_meta" rotulo="Meta de faturamento com governo (R$)" valor={numeroTexto(cliente?.objetivos?.meta_faturamento)} />
+          <Campo nome="obj_prazo" rotulo="Em quantos meses" valor={numeroTexto(cliente?.objetivos?.prazo_meses)} />
+        </div>
+      </Secao>
+
       {cliente && (
         <div className="p-5">
           <label className="flex items-start gap-3 text-sm">
@@ -125,4 +168,8 @@ function Campo({
       <Input name={nome} defaultValue={valor ?? ""} required={obrigatorio} />
     </CampoBase>
   );
+}
+
+function numeroTexto(n: number | null | undefined) {
+  return n == null ? "" : n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 }

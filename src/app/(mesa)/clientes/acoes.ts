@@ -7,12 +7,34 @@ import { db, type Porte } from "@/lib/db";
 import { exigirOperador } from "@/lib/auth";
 import { registrarEvento } from "@/lib/disputas";
 import { ITENS_MANUAIS, type Preparo, type StatusPreparo } from "@/lib/preparo";
+import type { Objetivos } from "@/lib/objetivos";
 
 const STATUS_PREPARO: StatusPreparo[] = ["pendente", "cliente_informou", "feito", "nao_se_aplica"];
 
 const PORTES: Porte[] = ["MEI", "ME", "EPP", "demais"];
 const so = (v: FormDataEntryValue | null) => String(v ?? "").trim();
 const digitos = (v: string) => v.replace(/\D/g, "");
+
+const numero = (v: FormDataEntryValue | null) => {
+  const t = so(v).replace(/[^\d,.]/g, "");
+  if (!t) return null;
+  // "50.000,00" → 50000; "12,5" → 12.5
+  const n = Number(t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/\.(?=\d{3}(\D|$))/g, ""));
+  return Number.isFinite(n) ? n : null;
+};
+
+function lerObjetivos(form: FormData): Objetivos {
+  const estrategia = so(form.get("obj_estrategia"));
+  const risco = so(form.get("obj_risco"));
+  return {
+    estrategia: estrategia === "sniper" || estrategia === "forca_bruta" ? estrategia : null,
+    risco: risco === "baixo" || risco === "medio" || risco === "alto" ? risco : null,
+    capital: numero(form.get("obj_capital")),
+    lucro_pct: numero(form.get("obj_lucro_pct")),
+    meta_faturamento: numero(form.get("obj_meta")),
+    prazo_meses: numero(form.get("obj_prazo")),
+  };
+}
 
 function lerFormulario(form: FormData) {
   const porte = so(form.get("porte")) as Porte;
@@ -30,12 +52,13 @@ function lerFormulario(form: FormData) {
     representante_nome: so(form.get("representante_nome")) || null,
     representante_cpf: digitos(so(form.get("representante_cpf"))) || null,
     representante_cargo: so(form.get("representante_cargo")) || null,
+    objetivos: lerObjetivos(form),
   };
 }
 
-const CAMPOS_PROPOSTA = ["endereco", "cidade_uf", "representante_nome", "representante_cpf", "representante_cargo"] as const;
+const CAMPOS_PROPOSTA = ["endereco", "cidade_uf", "representante_nome", "representante_cpf", "representante_cargo", "objetivos"] as const;
 
-/** Sem os campos da proposta: para quando a migration deles ainda não rodou no banco. */
+/** Sem os campos novos (proposta, objetivos): para quando a migration deles ainda não rodou no banco. */
 function semCamposProposta<T extends Record<string, unknown>>(c: T): T {
   const x = { ...c };
   for (const k of CAMPOS_PROPOSTA) delete x[k];

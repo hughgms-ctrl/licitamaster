@@ -37,6 +37,8 @@ export interface ClienteRow {
   token_portal: string;
   /** situação dos itens de preparação (src/lib/preparo.ts) */
   preparo: import("./preparo").Preparo;
+  /** bancos antigos não têm a coluna */
+  objetivos?: import("./objetivos").Objetivos;
   created_at: string;
 }
 

@@ -56,6 +56,15 @@ export default async function Guia() {
         </div>
       </div>
 
+      <div className="mb-8 space-y-2 rounded-lg border bg-card p-4 text-sm">
+        <p className="font-medium">O método Sniper</p>
+        <p className="leading-relaxed text-muted-foreground">
+          O roteiro segue os 14 passos do método Sniper: poucas licitações, bem escolhidas, preparadas a fundo. A
+          etiqueta &quot;Sniper&quot; em cada passo mostra a qual deles corresponde. Os passos 1 (achar oportunidades
+          qualificadas) e 14 (buscar a próxima) a coleta e a triagem da mesa fazem todo dia.
+        </p>
+      </div>
+
       <ol className="space-y-6">
         {FASES.map((fase, i) => (
           <li key={fase.id} className="overflow-hidden rounded-lg border bg-card">
@@ -71,7 +80,14 @@ export default async function Guia() {
             <ul className="divide-y">
               {fase.passos.map((p) => (
                 <li key={p.id} className="space-y-1.5 px-5 py-4 sm:pl-16">
-                  <p className="text-sm font-medium">{p.titulo}</p>
+                  <p className="flex flex-wrap items-baseline gap-2 text-sm font-medium">
+                    {p.titulo}
+                    {p.sniper && (
+                      <span className="num rounded bg-muted px-1.5 py-0.5 text-[0.6875rem] font-medium text-muted-foreground">
+                        Sniper {p.sniper}
+                      </span>
+                    )}
+                  </p>
                   <p className="text-sm leading-relaxed text-muted-foreground">{p.detalhe}</p>
                   {p.cuidado && (
                     <p className="flex items-start gap-1.5 text-sm leading-relaxed text-warning">

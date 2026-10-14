@@ -29,7 +29,19 @@ export async function PUT(req: NextRequest) {
   const erro = validar(body);
   if (erro) return NextResponse.json({ erro }, { status: 400 });
 
-  const { data, error } = await db().from("perfis").upsert(body).select("*").single();
+  let { data, error } = await db().from("perfis").upsert(body).select("*").single();
+  // Banco ainda sem a coluna `municipios`: sem cidades, salva sem ela; com
+  // cidades, avisa o que falta em vez de perder a escolha calada.
+  if (error && /municipios/.test(error.message)) {
+    if (Array.isArray(body.municipios) && body.municipios.length > 0) {
+      return NextResponse.json(
+        { erro: "O banco ainda não aceita cidades no perfil. Rode a atualização 20261015120000_perfil_municipios.sql no Supabase." },
+        { status: 500 }
+      );
+    }
+    const { municipios: _, ...semCidades } = body;
+    ({ data, error } = await db().from("perfis").upsert(semCidades).select("*").single());
+  }
   if (error) return NextResponse.json({ erro: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
@@ -97,6 +109,13 @@ function validar(p: Record<string, unknown>): string | null {
     if (typeof t?.termo !== "string" || !t.termo.trim()) return "há termo positivo em branco";
     if (typeof t?.peso !== "number" || !Number.isFinite(t.peso)) {
       return `o termo "${t.termo}" está sem peso numérico`;
+    }
+  }
+
+  if (p.municipios != null) {
+    if (!Array.isArray(p.municipios)) return "cidades inválidas";
+    for (const c of p.municipios) {
+      if (typeof c !== "string" || !/^[^/]+\/[A-Z]{2}$/.test(c.trim())) return `cidade "${c}" fora do formato Cidade/UF`;
     }
   }
 

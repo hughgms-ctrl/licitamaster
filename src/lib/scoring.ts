@@ -21,6 +21,8 @@ export interface Perfil {
   termos_positivos: TermoPositivo[];
   termos_negativos: string[];
   ufs: string[];
+  /** cidades atendidas além dos estados inteiros, como "Serra/ES" (bancos antigos não têm a coluna) */
+  municipios?: string[];
   valor_min: number | null;
   valor_max: number | null;
   score_minimo: number;
@@ -30,6 +32,7 @@ export interface Perfil {
 export interface AlvoScore {
   objeto: string | null | undefined;
   uf: string | null | undefined;
+  municipio?: string | null;
   valorEstimado: number | null | undefined;
   unidade?: string | null;
   orgao?: string | null;
@@ -150,9 +153,8 @@ export function pontuar(alvo: AlvoScore, perfil: Perfil): Resultado {
     [alvo.objeto, alvo.unidade, alvo.orgao].filter(Boolean).join(" ")
   );
 
-  if (perfil.ufs.length > 0 && alvo.uf && !perfil.ufs.includes(alvo.uf)) {
-    return { score: 0, termos: [], motivoDescarte: `fora das UFs do perfil (${alvo.uf})` };
-  }
+  const fora = foraDaArea(perfil, alvo.uf, alvo.municipio);
+  if (fora) return { score: 0, termos: [], motivoDescarte: fora };
 
   // Termo negativo é veto, não desconto. "aquisição de medicamentos e software
   // de controle de estoque" não é sua briga, mesmo casando um termo positivo.
@@ -229,4 +231,35 @@ export function melhorPorCliente(alvo: AlvoScore, perfis: Perfil[]) {
     }
   }
   return porCliente;
+}
+
+/**
+ * Onde o cliente atende: estados inteiros (`ufs`) e/ou cidades soltas
+ * (`municipios`, "Serra/ES"). Os dois vazios = Brasil inteiro. Devolve o
+ * motivo do descarte, ou null se a licitação está na área.
+ */
+export function foraDaArea(
+  perfil: Pick<Perfil, "ufs" | "municipios">,
+  uf: string | null | undefined,
+  municipio: string | null | undefined
+): string | null {
+  const cidades = perfil.municipios ?? [];
+  if (perfil.ufs.length === 0 && cidades.length === 0) return null;
+  if (!uf) return null; // sem UF na publicação: não dá para afirmar que está fora
+  if (perfil.ufs.includes(uf)) return null;
+  if (municipio && cidades.some((c) => mesmaCidade(c, municipio, uf))) return null;
+  return `fora da área do perfil (${municipio ? `${municipio}/` : ""}${uf})`;
+}
+
+/** "Serra/ES" contra município "SERRA" e UF "ES", sem ligar para acento e caixa. */
+export function mesmaCidade(cidadeUf: string, municipio: string, uf: string): boolean {
+  const i = cidadeUf.lastIndexOf("/");
+  if (i < 0) return false;
+  return cidadeUf.slice(i + 1).trim().toUpperCase() === uf && normalizar(cidadeUf.slice(0, i)) === normalizar(municipio);
+}
+
+/** UFs que a coleta precisa varrer para este perfil; vazio = Brasil inteiro. */
+export function ufsDoPerfil(perfil: Pick<Perfil, "ufs" | "municipios">): string[] {
+  const dasCidades = (perfil.municipios ?? []).map((c) => c.slice(c.lastIndexOf("/") + 1).trim().toUpperCase());
+  return [...new Set([...perfil.ufs, ...dasCidades])];
 }

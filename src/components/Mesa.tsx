@@ -70,20 +70,44 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
   const [buscando, setBuscando] = useState(false);
   const [aba, setAba] = useState("triagem");
   const [cliente, setCliente] = useState<string>("todos");
+  const [uf, setUf] = useState("todos");
+  const [cidade, setCidade] = useState("todas");
   const [busca, setBusca] = useState("");
   // `agora` congelado no carregamento: recalcular a cada render faria o
   // servidor e o navegador discordarem e o React reclamar de hidratação.
   const [agora] = useState(() => Date.now());
 
+  // Estado e cidade saem das próprias licitações: só aparece o que existe.
+  const ufsDisponiveis = useMemo(
+    () => [...new Set(disputas.map((d) => d.licitacao.uf).filter((x): x is string => !!x))].sort(),
+    [disputas]
+  );
+  const cidadesDisponiveis = useMemo(
+    () =>
+      [
+        ...new Set(
+          disputas
+            .filter((d) => uf === "todos" || d.licitacao.uf === uf)
+            .map((d) => (d.licitacao.municipio ? `${d.licitacao.municipio}/${d.licitacao.uf ?? ""}` : null))
+            .filter((x): x is string => !!x)
+        ),
+      ].sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [disputas, uf]
+  );
+  const noLugar = (d: DisputaCompleta) =>
+    (uf === "todos" || d.licitacao.uf === uf) &&
+    (cidade === "todas" || `${d.licitacao.municipio}/${d.licitacao.uf ?? ""}` === cidade);
+
   const porAba = useMemo(() => {
     const contagem: Record<string, number> = {};
     for (const a of ABAS) {
       contagem[a.id] = disputas.filter(
-        (d) => a.status.includes(d.status) && (cliente === "todos" || d.cliente_id === cliente)
+        (d) => a.status.includes(d.status) && (cliente === "todos" || d.cliente_id === cliente) && noLugar(d)
       ).length;
     }
     return contagem;
-  }, [disputas, cliente]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disputas, cliente, uf, cidade]);
 
   const visiveis = useMemo(() => {
     const status = ABAS.find((a) => a.id === aba)!.status;
@@ -95,6 +119,7 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
     return disputas.filter((d) => {
       if (!status.includes(d.status)) return false;
       if (cliente !== "todos" && d.cliente_id !== cliente) return false;
+      if (!noLugar(d)) return false;
       if (!termo) return true;
       const texto = [d.licitacao.objeto, d.licitacao.orgao_razao_social, d.licitacao.municipio]
         .join(" ")
@@ -103,7 +128,8 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
         .toLowerCase();
       return texto.includes(termo);
     });
-  }, [disputas, aba, cliente, busca]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disputas, aba, cliente, busca, uf, cidade]);
 
   // Para o resumo do topo: o que fecha em 48h na triagem pede atenção hoje.
   const urgentes = useMemo(
@@ -111,12 +137,14 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
       disputas.filter((d) => {
         if (!["sugerida", "aguardando_cliente", "aprovada", "em_preparacao"].includes(d.status)) return false;
         if (cliente !== "todos" && d.cliente_id !== cliente) return false;
+        if (!noLugar(d)) return false;
         const iso = d.licitacao.data_encerramento_proposta;
         if (!iso) return false;
         const h = (new Date(iso).getTime() - agora) / 36e5;
         return h >= 0 && h < 48;
       }).length,
-    [disputas, cliente, agora]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [disputas, cliente, agora, uf, cidade]
   );
 
   function atualizar(id: string, campos: Partial<DisputaCompleta>) {
@@ -128,7 +156,7 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
     : null;
   const coletaParada = horasDesdeColeta == null || horasDesdeColeta > 3;
 
-  const filtrando = busca !== "" || cliente !== "todos";
+  const filtrando = busca !== "" || cliente !== "todos" || uf !== "todos" || cidade !== "todas";
 
   return (
     <>
@@ -185,7 +213,7 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
         ]}
       />
 
-      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <div className="mb-4 flex flex-col gap-3">
         <div role="tablist" aria-label="Etapas" className="-mx-1 flex overflow-x-auto px-1 pb-1 xl:pb-0">
           <div className="inline-flex h-9 items-center rounded-lg bg-muted p-1">
             {ABAS.map((a) => (
@@ -216,7 +244,7 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
         <div className="flex flex-col gap-2 sm:flex-row">
           <NativeSelect
             aria-label="Cliente"
-            className="sm:w-56"
+            className="sm:w-48"
             value={cliente}
             onChange={(e) => setCliente(e.target.value)}
           >
@@ -227,7 +255,31 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
               </option>
             ))}
           </NativeSelect>
-          <div className="relative sm:w-64">
+          <NativeSelect
+            aria-label="Estado"
+            className="sm:w-36"
+            value={uf}
+            onChange={(e) => {
+              setUf(e.target.value);
+              setCidade("todas");
+            }}
+          >
+            <option value="todos">Todos os estados</option>
+            {ufsDisponiveis.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </NativeSelect>
+          <NativeSelect aria-label="Cidade" className="sm:w-48" value={cidade} onChange={(e) => setCidade(e.target.value)}>
+            <option value="todas">Todas as cidades</option>
+            {cidadesDisponiveis.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </NativeSelect>
+          <div className="relative sm:w-56">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="search"
@@ -252,6 +304,8 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
               onClick={() => {
                 setBusca("");
                 setCliente("todos");
+                setUf("todos");
+                setCidade("todas");
               }}
             >
               <X />

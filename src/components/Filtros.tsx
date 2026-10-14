@@ -44,6 +44,7 @@ const VAZIO: Omit<Rascunho, "cliente_id"> = {
   termos_positivos: [{ termo: "", peso: 30 }],
   termos_negativos: [],
   ufs: [],
+  municipios: [],
   valor_min: 1000,
   valor_max: null,
   score_minimo: 25,
@@ -579,40 +580,10 @@ function Editor({
       />
 
       <Secao
-        titulo="Estados"
-        dica="Nenhum selecionado = Brasil inteiro."
-        acao={
-          r.ufs.length > 0 ? (
-            <Button variant="ghost" size="sm" onClick={() => mudar({ ufs: [] })}>
-              Limpar — voltar para Brasil inteiro
-            </Button>
-          ) : undefined
-        }
+        titulo="Onde o cliente atende"
+        dica="Fora daqui a licitação nem entra no radar. Cidades avulsas somam aos estados inteiros."
       >
-        <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-9 xl:grid-cols-[repeat(14,minmax(0,1fr))]">
-          {UFS.map((sigla) => {
-            const on = r.ufs.includes(sigla);
-            return (
-              <button
-                key={sigla}
-                aria-pressed={on}
-                onClick={() =>
-                  mudar({
-                    ufs: on ? r.ufs.filter((u) => u !== sigla) : [...r.ufs, sigla],
-                  })
-                }
-                className={cn(
-                  "h-8 rounded-md border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  on
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "bg-card text-muted-foreground hover:bg-accent hover:text-foreground dark:bg-transparent"
-                )}
-              >
-                {sigla}
-              </button>
-            );
-          })}
-        </div>
+        <AreaAtuacao ufs={r.ufs} municipios={r.municipios ?? []} mudar={mudar} />
       </Secao>
 
       <Secao
@@ -708,5 +679,145 @@ function Campo({
         onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
       />
     </CampoBase>
+  );
+}
+
+/**
+ * Área de atuação: Brasil inteiro, ou estados inteiros e/ou cidades avulsas.
+ * Uma decisão de cada vez: primeiro se é o Brasil todo; só depois o detalhe.
+ */
+function AreaAtuacao({
+  ufs,
+  municipios,
+  mudar,
+}: {
+  ufs: string[];
+  municipios: string[];
+  mudar: (p: Partial<Rascunho>) => void;
+}) {
+  const [escolher, setEscolher] = useState(ufs.length > 0 || municipios.length > 0);
+  const [cidade, setCidade] = useState("");
+  const [ufCidade, setUfCidade] = useState(ufs[0] ?? "ES");
+
+  function adicionarCidade() {
+    const nome = cidade.trim().replace(/\s+/g, " ").replace(/\//g, "");
+    if (!nome) return;
+    const item = `${nome}/${ufCidade}`;
+    if (!municipios.some((m) => m.toLowerCase() === item.toLowerCase())) mudar({ municipios: [...municipios, item] });
+    setCidade("");
+  }
+
+  const resumo =
+    ufs.length === 0 && municipios.length === 0
+      ? "Brasil inteiro"
+      : [ufs.length ? `${ufs.join(", ")} inteiro${ufs.length > 1 ? "s" : ""}` : null, ...municipios].filter(Boolean).join(" · ");
+
+  return (
+    <div className="space-y-4">
+      <div className="inline-flex h-9 items-center rounded-lg bg-muted p-1" role="radiogroup" aria-label="Área de atuação">
+        {[
+          { v: false, rotulo: "Brasil inteiro" },
+          { v: true, rotulo: "Escolher estados ou cidades" },
+        ].map((o) => (
+          <button
+            key={o.rotulo}
+            role="radio"
+            aria-checked={escolher === o.v}
+            onClick={() => {
+              setEscolher(o.v);
+              if (!o.v) mudar({ ufs: [], municipios: [] });
+            }}
+            className={cn(
+              "inline-flex h-7 items-center rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
+              escolher === o.v && "bg-card text-foreground shadow-sm dark:bg-accent dark:shadow-none"
+            )}
+          >
+            {o.rotulo}
+          </button>
+        ))}
+      </div>
+
+      {escolher && (
+        <>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Estados inteiros</p>
+            <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-9 xl:grid-cols-[repeat(14,minmax(0,1fr))]">
+              {UFS.map((sigla) => {
+                const on = ufs.includes(sigla);
+                return (
+                  <button
+                    key={sigla}
+                    aria-pressed={on}
+                    onClick={() => mudar({ ufs: on ? ufs.filter((u) => u !== sigla) : [...ufs, sigla] })}
+                    className={cn(
+                      "h-8 rounded-md border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      on
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "bg-card text-muted-foreground hover:bg-accent hover:text-foreground dark:bg-transparent"
+                    )}
+                  >
+                    {sigla}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Cidades avulsas</p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                placeholder="Nome da cidade, ex: Serra"
+                value={cidade}
+                onChange={(e) => setCidade(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    adicionarCidade();
+                  }
+                }}
+                className="sm:max-w-xs"
+              />
+              <select
+                aria-label="Estado da cidade"
+                value={ufCidade}
+                onChange={(e) => setUfCidade(e.target.value)}
+                className="h-9 rounded-md border bg-card px-2 text-sm sm:w-24 dark:bg-transparent"
+              >
+                {UFS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+              <Button variant="outline" size="sm" className="h-9" onClick={adicionarCidade} disabled={!cidade.trim()}>
+                <Plus />
+                Adicionar cidade
+              </Button>
+            </div>
+            {municipios.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {municipios.map((m) => (
+                  <Badge key={m} variant="secondary" className="gap-1 pr-1">
+                    {m}
+                    <button
+                      aria-label={`Tirar ${m}`}
+                      onClick={() => mudar({ municipios: municipios.filter((x) => x !== m) })}
+                      className="rounded p-0.5 hover:bg-background/60"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      <p className="text-sm text-muted-foreground">
+        Atende: <span className="font-medium text-foreground">{escolher && resumo === "Brasil inteiro" ? "nada escolhido ainda (vale Brasil inteiro)" : resumo}</span>
+      </p>
+    </div>
   );
 }

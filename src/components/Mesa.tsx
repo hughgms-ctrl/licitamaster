@@ -1,59 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import {
-  BookOpen,
-  MoreHorizontal,
-  Scale,
-  TrendingDown,
-  FileCheck2,
-  FileSpreadsheet,
-  Gavel,
-  ExternalLink,
-  FileSearch,
-  FileText,
-  Inbox,
-  Loader2,
-  RefreshCw,
-  Search,
-  Send,
-  Sparkles,
-  X,
-} from "lucide-react";
+import { ChevronRight, ExternalLink, Inbox, Loader2, RefreshCw, Search, Send, Sparkles, X } from "lucide-react";
 import { procurarAgora } from "@/app/filtros/acoes";
+import { analisar } from "@/app/acoes";
 import type { AnaliseIA, DisputaCompleta, StatusDisputa } from "@/lib/db";
-import { ROTULO_STATUS, TRANSICOES_OPERADOR } from "@/lib/etapas";
+import { ROTULO_STATUS } from "@/lib/etapas";
 import { formatarData, formatarValor, limparObjeto } from "@/lib/formato";
-import { analisar, enviarAoCliente, lerEditalAcao, mudarStatus, salvarNotas, type Saida } from "@/app/acoes";
-import { dataDaSessao, type FichaRow } from "@/lib/ficha";
-import type { DocumentoResumo } from "@/lib/documentos";
 import { cn } from "@/lib/utils";
-import FichaEdital from "./FichaEdital";
-import RoteiroDisputa from "./RoteiroDisputa";
-import RegistroLances from "./RegistroLances";
-import ContratoPainel from "./ContratoPainel";
-import PrecoReferencia from "./PrecoReferencia";
-import RecursoPainel from "./RecursoPainel";
-import type { ContratoDisputa } from "@/lib/contrato";
-import { ETAPAS_COM_RESULTADO, type ResultadoDisputa } from "@/lib/resultado";
-import { ETAPAS_COM_GUIA } from "@/lib/guia";
-import { checklistHabilitacao, pendenciasHabilitacao } from "@/lib/documentos";
-import CopiarLink from "./CopiarLink";
+import { avisar, Prazo, rotuloVeredito, tomVeredito, useAcoesDisputa } from "./disputa-comum";
 import { Cabecalho } from "./Cabecalho";
 import { TOM_STATUS } from "./tons";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
-import { Textarea } from "./ui/textarea";
 import { NativeSelect } from "./ui/native-select";
 import { StatusDot } from "./ui/status-dot";
 import { StatStrip } from "./ui/stat-strip";
 import { Aviso } from "./ui/aviso";
 import { Vazio } from "./ui/vazio";
-import { useConfirmar } from "./ui/confirmar";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
 /**
  * As abas seguem o caminho da disputa. Cada uma é uma pergunta diferente:
@@ -82,56 +49,19 @@ const AJUDA_ABA: Record<string, string> = {
   descartadas: "O que você tirou da triagem nos últimos 30 dias.",
 };
 
-/** Rótulo do botão que leva a cada etapa. */
-const ACAO_PARA: Partial<Record<StatusDisputa, string>> = {
-  descartada: "Descartar",
-  sugerida: "Voltar para a triagem",
-  em_preparacao: "Começar preparação",
-  proposta_enviada: "Proposta enviada",
-  em_disputa: "Sessão aberta",
-  ganhou: "Ganhou",
-  perdeu: "Perdeu",
-  desistiu: "Desistir",
-};
-
-type AvisoMesa = Saida & { titulo: string };
-
-/**
- * Resultado de ações que tiram a licitação da aba atual (enviar, mudar de
- * etapa). Não pode morar no item: o item some da lista no mesmo instante, e
- * junto sumiria a mensagem — inclusive o link do portal quando o WhatsApp
- * não saiu, que é a única forma de chegar ao cliente. Com link, o aviso fica
- * na tela até ser fechado.
- */
-function avisar(a: AvisoMesa) {
-  const corpo = (
-    <div className="space-y-2">
-      <p>{a.mensagem}</p>
-      {a.link && <CopiarLink link={a.link} />}
-    </div>
-  );
-  const opcoes = { description: corpo, duration: a.link ? Infinity : 6000, closeButton: true };
-  if (a.ok) toast.success(a.titulo, opcoes);
-  else toast.error(a.titulo, opcoes);
-}
-
 interface Props {
   disputas: DisputaCompleta[];
   clientes: { id: string; nome: string }[];
   /** licitação → nome do cliente que está com ela */
   exclusivas: Record<string, string>;
   ultimaColeta: { finalizado_em: string | null; erro: string | null } | null;
-  /** licitação → ficha do edital já lida */
-  fichas: Record<string, FichaRow>;
-  /** cliente → documentos do cofre */
-  cofres: Record<string, DocumentoResumo[]>;
-  /** disputa → resultado da sessão já registrado */
-  resultados?: Record<string, ResultadoDisputa>;
-  /** disputa ganha → contrato */
-  contratos?: Record<string, ContratoDisputa>;
+  /** licitações com o edital já lido (análise profunda) */
+  lidas: Record<string, true>;
+  /** disputas com o resultado da sessão já registrado */
+  comResultado: Record<string, true>;
 }
 
-export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaColeta, fichas, cofres, resultados = {}, contratos = {} }: Props) {
+export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaColeta, lidas, comResultado }: Props) {
   const [disputas, setDisputas] = useState(iniciais);
   // Depois de "Buscar agora" a página recarrega os dados do servidor; sem
   // isto a lista continuaria mostrando o estado de antes da busca.
@@ -352,10 +282,8 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
                   : null
               }
               atualizar={atualizar}
-              fichaInicial={fichas[d.licitacao_id] ?? null}
-              cofre={cofres[d.cliente_id] ?? []}
-              resultadoInicial={resultados[d.id] ?? null}
-              contratoInicial={contratos[d.id] ?? null}
+              temFicha={!!lidas[d.licitacao_id]}
+              temResultado={!!comResultado[d.id]}
             />
           ))}
         </div>
@@ -364,601 +292,137 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
   );
 }
 
+
+/**
+ * Um card por licitação. Clicar abre a página dela; aqui fora ficam só os
+ * atalhos: enviar ou o próximo passo, o resumo da análise rápida, o edital e
+ * descartar.
+ */
 function Item({
-  fichaInicial,
-  cofre,
-  resultadoInicial,
-  contratoInicial,
   d,
   agora,
   comOutro,
   atualizar,
+  temFicha,
+  temResultado,
 }: {
   d: DisputaCompleta;
   agora: number;
   /** nome do outro cliente que já está com esta licitação, se houver */
   comOutro: string | null;
   atualizar: (id: string, campos: Partial<DisputaCompleta>) => void;
-  fichaInicial: FichaRow | null;
-  cofre: DocumentoResumo[];
-  resultadoInicial: ResultadoDisputa | null;
-  contratoInicial: ContratoDisputa | null;
+  temFicha: boolean;
+  temResultado: boolean;
 }) {
-  const [pendente, iniciar] = useTransition();
-  const [saida, setSaida] = useState<Saida | null>(null);
-  const [abrirAnalise, setAbrirAnalise] = useState(false);
-  const [ficha, setFicha] = useState<FichaRow | null>(fichaInicial);
-  const [abrirFicha, setAbrirFicha] = useState(false);
-  const [abrirGuia, setAbrirGuia] = useState(false);
-  const [resultado, setResultado] = useState<ResultadoDisputa | null>(resultadoInicial);
-  const [abrirResultado, setAbrirResultado] = useState(false);
-  const [contrato, setContrato] = useState<ContratoDisputa | null>(contratoInicial);
-  const [abrirContrato, setAbrirContrato] = useState(false);
-  const [abrirPreco, setAbrirPreco] = useState(false);
-  const [abrirRecurso, setAbrirRecurso] = useState(false);
-  const [lendo, setLendo] = useState(false);
-  const [notas, setNotas] = useState(d.notas_operador ?? "");
-  const [confirmar, dialogo] = useConfirmar();
+  const [abrirResumo, setAbrirResumo] = useState(false);
+  const a = useAcoesDisputa(d, { temFicha, aoMudar: (c) => atualizar(d.id, c) });
   const l = d.licitacao;
   const nomeCliente = d.cliente.nome_fantasia || d.cliente.razao_social;
+  const linkEdital = l.link_pncp ?? l.link_sistema_origem;
+  const fatos = [
+    formatarValor(l.valor_estimado),
+    [l.municipio, l.uf].filter(Boolean).join("/"),
+    l.modalidade_nome,
+    l.data_encerramento_proposta ? `até ${formatarData(l.data_encerramento_proposta)}` : null,
+    `aderência ${d.score}`,
+  ].filter(Boolean);
 
-  function rodar(fn: () => Promise<Saida>, depois?: (s: Saida) => void) {
-    setSaida(null);
-    iniciar(async () => {
-      try {
-        const s = await fn();
-        setSaida(s);
-        if (s.ok) depois?.(s);
-      } catch (e) {
-        setSaida({ ok: false, mensagem: (e as Error).message });
-      }
-    });
-  }
-
-  async function lerEdital() {
-    setLendo(true);
-    setSaida(null);
-    try {
-      const s = await lerEditalAcao(d.id);
-      setSaida({ ok: s.ok, mensagem: s.mensagem });
-      if (s.ficha) {
-        setFicha(s.ficha);
-        setAbrirFicha(true);
-      }
-    } catch (e) {
-      setSaida({ ok: false, mensagem: (e as Error).message });
-    } finally {
-      setLendo(false);
-    }
-  }
-
-  const destinos = TRANSICOES_OPERADOR[d.status];
-  const podeEnviar = d.status === "sugerida" || d.status === "recusada";
-  // Antes de enviar: o que, pelo edital lido, tiraria o cliente da disputa.
-  const pendencias =
-    podeEnviar && ficha
-      ? pendenciasHabilitacao(
-          checklistHabilitacao(
-            ficha.ficha.documentos_exigidos,
-            cofre,
-            dataDaSessao(ficha.ficha.sessao.data_hora) ?? l.data_encerramento_proposta
-          )
-        )
-      : null;
-  const editalMudou =
-    !!ficha?.versao_pncp && !!l.data_atualizacao_pncp && new Date(l.data_atualizacao_pncp) > new Date(ficha.versao_pncp);
-  // O passo adiante desta etapa ganha o destaque; voltar e desistir ficam discretos.
-  const proximoPasso = destinos.find((x) => !["descartada", "desistiu", "perdeu", "sugerida"].includes(x));
-
-  const prazo = calcularPrazo(l.data_encerramento_proposta, agora, d.status);
-  const local = [l.municipio, l.uf].filter(Boolean).join("/");
-
-  // Triagem e espera do cliente mostram tudo; depois da aprovação, o que é
-  // de consulta (análise, preço, recurso, edital) vai para o menu "Mais".
-  const triagem = ["sugerida", "recusada", "descartada", "aguardando_cliente"].includes(d.status);
-  const mostrar = (k: "analise") => (k === "analise" ? triagem : true);
-  function botaoAnaliseAcao() {
-    rodar(
+  function resumo() {
+    if (d.analise_ia) return setAbrirResumo((x) => !x);
+    a.rodar(
       () => analisar(d.id),
       (s) => {
-        const a = (s as Saida & { analise?: AnaliseIA }).analise;
-        if (a) atualizar(d.id, { analise_ia: a });
-        setAbrirAnalise(true);
+        const an = (s as typeof s & { analise?: AnaliseIA }).analise;
+        if (an) atualizar(d.id, { analise_ia: an });
+        setAbrirResumo(true);
       }
     );
-  }
-  const botaoAnalise = (
-    <Button
-      size="sm"
-      variant="outline"
-      disabled={pendente}
-      aria-expanded={d.analise_ia ? abrirAnalise : undefined}
-      onClick={() => (d.analise_ia ? setAbrirAnalise((x) => !x) : botaoAnaliseAcao())}
-    >
-      {pendente && !d.analise_ia ? <Loader2 className="animate-spin" /> : <Sparkles />}
-      {rotuloAnaliseRapida()}
-    </Button>
-  );
-  function rotuloAnaliseRapida() {
-    if (!d.analise_ia) return pendente ? "Analisando…" : "Análise rápida";
-    return abrirAnalise ? "Fechar análise rápida" : `Análise rápida: ${rotuloVeredito(d.analise_ia.veredito)}`;
-  }
-  // Análise profunda: baixa e lê o edital inteiro (1 a 3 min) e monta a ficha.
-  const botaoProfunda = (
-    <Button
-      size="sm"
-      variant="outline"
-      disabled={lendo}
-      aria-expanded={ficha ? abrirFicha : undefined}
-      onClick={() => (ficha ? setAbrirFicha((x) => !x) : lerEdital())}
-    >
-      {lendo ? <Loader2 className="animate-spin" /> : ficha ? <FileText /> : <FileSearch />}
-      {lendo
-        ? "Lendo o edital… (1 a 3 min)"
-        : ficha
-          ? abrirFicha
-            ? "Fechar análise profunda"
-            : "Análise profunda"
-          : "Análise profunda (lê o edital)"}
-    </Button>
-  );
-  async function enviar() {
-    if (
-      !ficha &&
-      !(await confirmar({
-        titulo: "Enviar sem a análise profunda?",
-        texto:
-          "O edital ainda não foi lido. O cliente não vai ver no portal os documentos e atestados que vão exigir dele, e você não confere antes se falta algo no cofre.",
-        confirmar: "Enviar assim mesmo",
-      }))
-    )
-      return;
-    rodar(
-      () => enviarAoCliente(d.id),
-      (s) => {
-        avisar({ ...s, titulo: limparObjeto(l.objeto).slice(0, 90) });
-        atualizar(d.id, { status: "aguardando_cliente" });
-      }
-    );
-  }
-  const extras: { chave: string; icone: React.ReactNode; rotulo: string; acao?: () => void; href?: string; noMenu: boolean }[] = [];
-  if (l.valor_estimado && ["sugerida", "aguardando_cliente", "aprovada", "em_preparacao", "proposta_enviada", "em_disputa"].includes(d.status)) {
-    extras.push({
-      chave: "preco",
-      icone: <TrendingDown />,
-      rotulo: abrirPreco ? "Fechar preço" : "Preço de referência",
-      acao: () => setAbrirPreco((x) => !x),
-      noMenu: ["proposta_enviada", "em_disputa"].includes(d.status),
-    });
-  }
-  if (["proposta_enviada", "em_disputa", "ganhou"].includes(d.status)) {
-    extras.push({
-      chave: "proposta",
-      icone: <FileSpreadsheet />,
-      rotulo: "Proposta ajustada",
-      href: `/disputas/${d.id}/proposta`,
-      noMenu: d.status !== "em_disputa",
-    });
-  }
-  if (["em_disputa", "ganhou", "perdeu"].includes(d.status)) {
-    extras.push({
-      chave: "recurso",
-      icone: <Scale />,
-      rotulo: abrirRecurso ? "Fechar recurso" : "Recurso",
-      acao: () => setAbrirRecurso((x) => !x),
-      noMenu: d.status !== "perdeu",
-    });
-  }
-  if (l.link_pncp || l.link_sistema_origem) {
-    extras.push({ chave: "edital", icone: <ExternalLink />, rotulo: "Abrir edital", href: (l.link_pncp ?? l.link_sistema_origem)!, noMenu: !triagem });
   }
 
   return (
-    <article className="flex gap-4 p-4 sm:p-5">
-      <div
-        className={cn(
-          "flex w-14 shrink-0 flex-col sm:w-[4.5rem] items-center justify-center self-start rounded-md border px-1 py-2 text-center",
-          prazo.nivel === "critico" && "border-destructive/30 bg-destructive/10 text-destructive",
-          prazo.nivel === "atencao" && "border-warning/30 bg-warning/10 text-warning",
-          prazo.nivel === "ok" && "border-success/25 bg-success/10 text-success",
-          prazo.nivel === "neutro" && "bg-muted/60 text-muted-foreground"
-        )}
-        title={formatarData(l.data_encerramento_proposta)}
-      >
-        <span className="num text-lg font-semibold leading-none tracking-tight">{prazo.num}</span>
-        <span className="mt-1 text-[0.6875rem] leading-tight opacity-80">{prazo.rot}</span>
-      </div>
+    <article className="relative flex gap-4 p-4 transition-colors hover:bg-accent/40 sm:p-5">
+      <Prazo iso={l.data_encerramento_proposta} agora={agora} status={d.status} />
 
-      <div className="min-w-0 flex-1 space-y-3">
-        <div className="space-y-1.5">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <p className="min-w-0 truncate text-xs text-muted-foreground">{l.orgao_razao_social ?? "Órgão não informado"}</p>
-            <Badge variant="secondary">{nomeCliente}</Badge>
-            {d.status !== "sugerida" && (
-              <StatusDot tom={TOM_STATUS[d.status]} pulsar={d.status === "em_disputa"}>
-                {ROTULO_STATUS[d.status]}
-              </StatusDot>
-            )}
-            {!resultado && ["ganhou", "perdeu"].includes(d.status) && (
-              <StatusDot tom="alerta">Lances não registrados</StatusDot>
-            )}
-            {l.revisoes > 0 && (
-              <StatusDot tom="alerta">Edital retificado {l.revisoes === 1 ? "uma vez" : `${l.revisoes} vezes`}</StatusDot>
-            )}
-          </div>
-          <p className="line-clamp-3 text-[0.9375rem] font-medium leading-snug">{limparObjeto(l.objeto)}</p>
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <p className="min-w-0 truncate text-xs text-muted-foreground">{l.orgao_razao_social ?? "Órgão não informado"}</p>
+          <Badge variant="secondary">{nomeCliente}</Badge>
+          {d.status !== "sugerida" && (
+            <StatusDot tom={TOM_STATUS[d.status]} pulsar={d.status === "em_disputa"}>
+              {ROTULO_STATUS[d.status]}
+            </StatusDot>
+          )}
+          {d.analise_ia && <StatusDot tom={tomVeredito(d.analise_ia.veredito)}>{rotuloVeredito(d.analise_ia.veredito)}</StatusDot>}
+          {temFicha && <StatusDot tom="neutro">edital lido</StatusDot>}
+          {!temResultado && ["ganhou", "perdeu"].includes(d.status) && (
+            <StatusDot tom="alerta">Lances não registrados</StatusDot>
+          )}
+          {l.revisoes > 0 && <StatusDot tom="alerta">Edital retificado</StatusDot>}
         </div>
 
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3 xl:grid-cols-5">
-          <Fato rotulo="Valor estimado" num>
-            {formatarValor(l.valor_estimado)}
-          </Fato>
-          <Fato rotulo="Local">{local || "—"}</Fato>
-          <Fato rotulo="Modalidade">
-            {l.modalidade_nome ?? "—"}
-            {l.srp ? ", registro de preços" : ""}
-          </Fato>
-          <Fato rotulo="Propostas até" num>
-            {formatarData(l.data_encerramento_proposta)}
-          </Fato>
-          <Fato rotulo="Aderência" num title={d.termos_encontrados.join(", ")}>
-            <span className="inline-flex items-center gap-2">
-              {d.score}
-              <span className="h-1 w-12 overflow-hidden rounded-full bg-muted">
-                <span
-                  className={cn(
-                    "block h-full rounded-full",
-                    d.score >= 60 ? "bg-success" : d.score >= 35 ? "bg-warning" : "bg-muted-foreground/50"
-                  )}
-                  style={{ width: `${Math.min(100, d.score)}%` }}
-                />
-              </span>
-            </span>
-          </Fato>
-        </dl>
+        <Link
+          href={`/disputas/${d.id}`}
+          className="line-clamp-2 text-[0.9375rem] font-medium leading-snug after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:underline focus-visible:outline-none"
+        >
+          {limparObjeto(l.objeto)}
+        </Link>
 
-        {(d.preco_minimo != null || (d.status === "recusada" && d.motivo_recusa) || comOutro) && (
-          <div className="space-y-2">
-            {d.preco_minimo != null && (
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md bg-muted/60 px-3 py-2 text-sm">
-                <span className="text-muted-foreground">Preço mínimo do cliente</span>
-                <b className="num font-semibold">{formatarValor(d.preco_minimo)}</b>
-                {l.valor_estimado && l.valor_estimado > 0 && (
-                  <span className="num text-xs text-muted-foreground">
-                    {Math.round((d.preco_minimo / l.valor_estimado) * 100)}% do estimado
-                  </span>
-                )}
-                {d.notas_cliente && <span className="basis-full italic text-muted-foreground">“{d.notas_cliente}”</span>}
-              </div>
-            )}
-            {d.status === "recusada" && d.motivo_recusa && (
-              <Aviso tom="erro">Recusou: “{d.motivo_recusa}”</Aviso>
-            )}
-            {comOutro && (
-              <Aviso tom="alerta">
-                Esta licitação já está com <b>{comOutro}</b>. Um cliente por licitação.
-              </Aviso>
-            )}
+        <p className="num text-sm text-muted-foreground">
+          {fatos.join(" · ")}
+          {d.preco_minimo != null && (
+            <>
+              {" · "}
+              <span className="text-foreground">mínimo do cliente {formatarValor(d.preco_minimo)}</span>
+            </>
+          )}
+        </p>
+
+        {comOutro && <p className="text-sm text-warning">Já está com {comOutro}. Um cliente por licitação.</p>}
+        {d.status === "recusada" && d.motivo_recusa && (
+          <p className="text-sm text-destructive">Recusou: “{d.motivo_recusa}”</p>
+        )}
+
+        {abrirResumo && d.analise_ia && (
+          <div className="relative z-10 space-y-2 rounded-md bg-muted/60 p-3 text-sm">
+            <p className="leading-relaxed">{d.analise_ia.resumo}</p>
+            <Link href={`/disputas/${d.id}`} className="text-xs font-medium text-primary hover:underline dark:text-sidebar-primary">
+              Ver análise completa
+            </Link>
           </div>
         )}
 
-        {abrirPreco && <PrecoReferencia d={d} />}
-        {abrirRecurso && <RecursoPainel d={d} />}
-        {abrirGuia && <RoteiroDisputa d={d} ficha={ficha} />}
-        {abrirResultado && <RegistroLances d={d} inicial={resultado} salvo={setResultado} />}
-        {abrirContrato && (
-          <ContratoPainel d={d} inicial={contrato} valorPadrao={resultado?.nosso_lance ?? null} salvo={setContrato} />
-        )}
-        {abrirAnalise && d.analise_ia && <Analise a={d.analise_ia} />}
-        {abrirFicha && ficha && (
-          <FichaEdital
-            linha={ficha}
-            cofre={cofre}
-            encerramento={d.licitacao.data_encerramento_proposta}
-            nomeCliente={nomeCliente}
-            editalMudouDepois={
-              !!ficha.versao_pncp &&
-              !!d.licitacao.data_atualizacao_pncp &&
-              new Date(d.licitacao.data_atualizacao_pncp) > new Date(ficha.versao_pncp)
-            }
-          />
-        )}
-
-        {podeEnviar && ficha && pendencias && (pendencias.total > 0 || editalMudou || ficha.ficha.exigencias_tecnicas.length > 0) && (
-          <Aviso tom={pendencias.total > 0 || editalMudou ? "alerta" : "info"} titulo="Antes de enviar, confira">
-            <ul className="list-disc space-y-0.5 pl-4 marker:text-muted-foreground/60">
-              {editalMudou && <li>O edital foi retificado depois da leitura. Leia de novo.</li>}
-              {pendencias.falta.length > 0 && (
-                <li>
-                  Falta no cofre de {nomeCliente}: {pendencias.falta.map((i) => i.rotulo).join(", ")}.
-                </li>
-              )}
-              {pendencias.vencido.length > 0 && <li>Vencido: {pendencias.vencido.map((i) => i.rotulo).join(", ")}.</li>}
-              {pendencias.venceAntes.length > 0 && (
-                <li>Vence antes da sessão: {pendencias.venceAntes.map((i) => i.rotulo).join(", ")}.</li>
-              )}
-              {ficha.ficha.exigencias_tecnicas.length > 0 && (
-                <li>
-                  {ficha.ficha.exigencias_tecnicas.length === 1
-                    ? "1 exigência técnica"
-                    : `${ficha.ficha.exigencias_tecnicas.length} exigências técnicas`}{" "}
-                  (atestados, registros). O cliente verá a lista no portal antes de decidir.
-                </li>
-              )}
-            </ul>
-            {pendencias.total > 0 && (
-              <p className="text-xs text-muted-foreground">
-                O cliente também vê o que falta. Se não der para resolver até a sessão, melhor descartar.
-              </p>
-            )}
-          </Aviso>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2">
-          {podeEnviar && (
-            <Button
-              size="sm"
-              disabled={pendente || lendo || comOutro != null}
-              title={comOutro ? `Já está com ${comOutro}` : undefined}
-              onClick={enviar}
-            >
+        <div className="relative z-10 flex flex-wrap items-center gap-2 pt-1">
+          {a.podeEnviar && (
+            <Button size="sm" disabled={a.pendente || comOutro != null} onClick={a.enviar}>
               <Send />
-              {d.status === "recusada" ? "Reenviar ao cliente" : "Enviar ao cliente"}
+              {d.status === "recusada" ? "Reenviar" : "Enviar ao cliente"}
             </Button>
           )}
-
-          {destinos
-            .filter((para) => !podeEnviar && para === proximoPasso)
-            .map((para) => (
-              botaoEtapa(para, "default")
-            ))}
-
-          {mostrar("analise") && botaoAnalise}
-
-          {botaoProfunda}
-
-          {(ETAPAS_COM_RESULTADO as readonly string[]).includes(d.status) && (
-            <Button
-              size="sm"
-              variant={!resultado && ["ganhou", "perdeu"].includes(d.status) ? "secondary" : "outline"}
-              aria-expanded={abrirResultado}
-              onClick={() => setAbrirResultado((x) => !x)}
-            >
-              <Gavel />
-              {abrirResultado ? "Fechar lances" : resultado ? "Lances registrados" : "Registrar lances"}
+          {a.proximoPasso && a.botaoEtapa(a.proximoPasso, "default")}
+          <Button size="sm" variant="outline" disabled={a.pendente} aria-expanded={abrirResumo} onClick={resumo}>
+            {a.pendente && !d.analise_ia ? <Loader2 className="animate-spin" /> : <Sparkles />}
+            {d.analise_ia ? (abrirResumo ? "Fechar resumo" : "Resumo") : a.pendente ? "Analisando…" : "Análise rápida"}
+          </Button>
+          {linkEdital && (
+            <Button size="sm" variant="ghost" asChild>
+              <a href={linkEdital} target="_blank" rel="noreferrer">
+                <ExternalLink />
+                Abrir edital
+              </a>
             </Button>
           )}
-
-          {d.status === "ganhou" && (
-            <Button
-              size="sm"
-              variant={contrato ? "outline" : "secondary"}
-              aria-expanded={abrirContrato}
-              onClick={() => setAbrirContrato((x) => !x)}
-            >
-              <FileCheck2 />
-              {abrirContrato ? "Fechar contrato" : contrato ? "Contrato" : "Registrar contrato"}
-            </Button>
-          )}
-
-          {ETAPAS_COM_GUIA.includes(d.status) && (
-            <Button size="sm" variant="outline" aria-expanded={abrirGuia} onClick={() => setAbrirGuia((x) => !x)}>
-              <BookOpen />
-              {abrirGuia ? "Fechar roteiro" : "Roteiro da disputa"}
-            </Button>
-          )}
-
-          {extras.filter((x) => !x.noMenu).map((x) => (
-            <Button key={x.chave} size="sm" variant={x.chave === "edital" ? "ghost" : "outline"} asChild={!!x.href} onClick={x.href ? undefined : x.acao}>
-              {x.href ? (
-                <a href={x.href} target="_blank" rel="noreferrer">
-                  {x.icone}
-                  {x.rotulo}
-                </a>
-              ) : (
-                <>
-                  {x.icone}
-                  {x.rotulo}
-                </>
-              )}
-            </Button>
-          ))}
-
-          {!triagem && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="ghost" aria-label="Mais ações">
-                  <MoreHorizontal />
-                  Mais
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem onSelect={() => (d.analise_ia ? setAbrirAnalise((x) => !x) : botaoAnaliseAcao())}>
-                  <Sparkles />
-                  {rotuloAnaliseRapida()}
-                </DropdownMenuItem>
-                {extras
-                  .filter((x) => x.noMenu)
-                  .map((x) =>
-                    x.href ? (
-                      <DropdownMenuItem key={x.chave} asChild>
-                        <a href={x.href} target="_blank" rel="noreferrer">
-                          {x.icone}
-                          {x.rotulo}
-                        </a>
-                      </DropdownMenuItem>
-                    ) : (
-                      <DropdownMenuItem key={x.chave} onSelect={x.acao}>
-                        {x.icone}
-                        {x.rotulo}
-                      </DropdownMenuItem>
-                    )
-                  )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
           <span className="flex-1" />
-
-          {destinos
-            .filter((para) => podeEnviar || para !== proximoPasso)
-            .map((para) => (
-              botaoEtapa(para, ["descartada", "desistiu", "perdeu"].includes(para) ? "ghost" : "outline")
-            ))}
+          {a.destinos.includes("descartada") && a.botaoEtapa("descartada", "ghost")}
+          <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
         </div>
 
-        {saida && (
-          <Aviso tom={saida.ok ? "sucesso" : "erro"}>
-            <p>{saida.mensagem}</p>
-            {saida.link && <CopiarLink link={saida.link} />}
+        {a.saida && !a.saida.ok && (
+          <Aviso tom="erro" className="relative z-10">
+            {a.saida.mensagem}
           </Aviso>
         )}
-
-        {!["sugerida", "descartada"].includes(d.status) && (
-          <Textarea
-            rows={2}
-            className="min-h-0 bg-muted/40 text-sm dark:bg-muted/40"
-            aria-label="Notas internas"
-            placeholder="Notas internas. O cliente não vê."
-            value={notas}
-            onChange={(e) => setNotas(e.target.value)}
-            onBlur={() => {
-              if (notas !== (d.notas_operador ?? "")) {
-                rodar(
-                  () => salvarNotas(d.id, notas),
-                  () => atualizar(d.id, { notas_operador: notas })
-                );
-              }
-            }}
-          />
-        )}
       </div>
-      {dialogo}
+      {a.dialogo}
     </article>
-  );
-
-  function botaoEtapa(para: StatusDisputa, variante: "default" | "outline" | "ghost") {
-    return (
-      <Button
-        key={para}
-        size="sm"
-        variant={variante}
-        className={cn(variante === "ghost" && "text-muted-foreground")}
-        disabled={pendente}
-        onClick={async () => {
-          if (
-            para === "desistiu" &&
-            !(await confirmar({
-              titulo: "Desistir desta disputa?",
-              texto:
-                "Se a proposta já foi enviada, desistir pode gerar penalidade ao cliente. Confira o edital.",
-              confirmar: "Desistir",
-              destrutivo: true,
-            }))
-          )
-            return;
-          rodar(
-            () => mudarStatus(d.id, para),
-            () => {
-              avisar({
-                ok: true,
-                mensagem: para === "sugerida" ? "Voltou para a triagem." : `Movida para "${ROTULO_STATUS[para]}".`,
-                titulo: limparObjeto(l.objeto).slice(0, 90),
-              });
-              atualizar(d.id, { status: para });
-            }
-          );
-        }}
-      >
-        {d.status === "aguardando_cliente" && para === "sugerida"
-          ? "Cancelar envio"
-          : (ACAO_PARA[para] ?? ROTULO_STATUS[para])}
-      </Button>
-    );
-  }
-}
-
-function Fato({
-  rotulo,
-  children,
-  num,
-  title,
-}: {
-  rotulo: string;
-  children: React.ReactNode;
-  num?: boolean;
-  title?: string;
-}) {
-  return (
-    <div className="min-w-0" title={title}>
-      <dt className="text-xs text-muted-foreground">{rotulo}</dt>
-      <dd className={cn("font-medium sm:truncate", num && "num")}>{children}</dd>
-    </div>
-  );
-}
-
-/**
- * A coluna de prazo. Antes da proposta, conta o tempo que resta; depois, a
- * contagem não serve para nada e o espaço mostra onde a disputa está.
- */
-function calcularPrazo(
-  iso: string | null,
-  agora: number,
-  status: StatusDisputa
-): { num: string; rot: string; nivel: "critico" | "atencao" | "ok" | "neutro" } {
-  if (status === "ganhou") return { num: "✓", rot: "ganhou", nivel: "ok" };
-  const posProposta = ["proposta_enviada", "em_disputa", "perdeu", "desistiu"].includes(status);
-  if (posProposta) return { num: "—", rot: "proposta enviada", nivel: "neutro" };
-  if (!iso) return { num: "—", rot: "sem prazo", nivel: "neutro" };
-  const horas = (new Date(iso).getTime() - agora) / 36e5;
-  if (horas < 0) return { num: "—", rot: "prazo fechou", nivel: "neutro" };
-  if (horas < 1) {
-    return { num: `${Math.max(1, Math.round(horas * 60))}min`, rot: "para fechar", nivel: "critico" };
-  }
-  if (horas < 48) {
-    return { num: `${Math.floor(horas)}h`, rot: "para fechar", nivel: horas < 24 ? "critico" : "atencao" };
-  }
-  const dias = Math.floor(horas / 24);
-  return { num: `${dias}d`, rot: "para fechar", nivel: dias < 3 ? "atencao" : "ok" };
-}
-
-function rotuloVeredito(v: AnaliseIA["veredito"]) {
-  return v === "vale_a_pena" ? "vale a pena" : v === "nao_vale" ? "não vale" : "talvez";
-}
-
-function Analise({ a }: { a: AnaliseIA }) {
-  const tom = a.veredito === "vale_a_pena" ? "sucesso" : a.veredito === "nao_vale" ? "perigo" : "alerta";
-  return (
-    <div className="space-y-4 rounded-md border bg-background/40 p-4 text-sm">
-      <div className="flex items-center gap-2">
-        <Sparkles className="size-4 text-muted-foreground" />
-        <span className="font-medium">Análise da IA</span>
-        <StatusDot tom={tom}>{rotuloVeredito(a.veredito)}</StatusDot>
-      </div>
-      <p className="leading-relaxed">{a.resumo}</p>
-      <div className="space-y-1">
-        <h4 className="text-xs font-medium text-muted-foreground">O cliente vai ler</h4>
-        <p className="leading-relaxed text-muted-foreground">{a.resumo_cliente}</p>
-      </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        <Lista titulo="O que pedem" itens={a.o_que_pedem} />
-        <Lista titulo="Riscos" itens={a.riscos} />
-        <Lista titulo="Conferir no edital antes de enviar" itens={a.perguntas} />
-      </div>
-    </div>
-  );
-}
-
-function Lista({ titulo, itens }: { titulo: string; itens: string[] }) {
-  if (!itens?.length) return null;
-  return (
-    <div className="space-y-1.5">
-      <h4 className="text-xs font-medium text-muted-foreground">{titulo}</h4>
-      <ul className="list-disc space-y-1 pl-4 leading-relaxed marker:text-muted-foreground/60">
-        {itens.map((x, i) => (
-          <li key={i}>{x}</li>
-        ))}
-      </ul>
-    </div>
   );
 }

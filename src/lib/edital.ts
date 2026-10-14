@@ -15,7 +15,8 @@ import { normalizar } from "./scoring";
  * O download vem como application/octet-stream: o tipo sai dos bytes.
  */
 
-const BASE = "https://pncp.gov.br/api/pncp/v1";
+export const BASE_PNCP_V1 = "https://pncp.gov.br/api/pncp/v1";
+const BASE = BASE_PNCP_V1;
 
 /** Teto do que mandamos para a IA. O limite da API do Claude é 32 MB por
  *  requisição, e base64 infla 33%: 20 MB de PDF cabem com folga. */
@@ -72,7 +73,7 @@ const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * GET com 3 tentativas. O PNCP falha de forma intermitente (conexão
  * recusada, DNS, 5xx) e uma falha isolada não pode derrubar a leitura.
  */
-async function getComRetentativa(url: string, timeoutMs: number): Promise<Response> {
+export async function getComRetentativa(url: string, timeoutMs: number): Promise<Response> {
   let ultimo: unknown;
   for (let i = 0; i < 3; i++) {
     try {

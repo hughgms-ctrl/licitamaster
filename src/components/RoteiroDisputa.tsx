@@ -11,6 +11,7 @@ import { formatarValor } from "@/lib/formato";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "./ui/checkbox";
 import { Aviso } from "./ui/aviso";
+import AssistenteLance from "./AssistenteLance";
 
 /**
  * O roteiro da disputa dentro da mesa: o piso do cliente sempre à vista, os
@@ -88,6 +89,10 @@ export default function RoteiroDisputa({ d, ficha }: { d: DisputaCompleta; ficha
         <p className="text-xs text-muted-foreground">
           Leia o edital (botão &quot;Ler edital&quot;) para o roteiro mostrar data da sessão, plataforma e modo de disputa.
         </p>
+      )}
+
+      {["proposta_enviada", "em_disputa"].includes(d.status) && (
+        <AssistenteLance piso={d.preco_minimo} estimado={d.licitacao.valor_estimado} />
       )}
 
       {erro && <Aviso tom="erro">{erro}</Aviso>}

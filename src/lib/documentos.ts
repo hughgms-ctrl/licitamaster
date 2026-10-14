@@ -114,3 +114,16 @@ export function checklistHabilitacao(
     };
   });
 }
+
+/**
+ * O que, no checklist, tira o cliente da disputa se ninguém agir antes da
+ * sessão: documento que falta, já vencido ou que vence antes da sessão.
+ */
+export function pendenciasHabilitacao(itens: ItemChecklist[]) {
+  return {
+    falta: itens.filter((i) => i.situacao === "falta"),
+    vencido: itens.filter((i) => i.situacao === "vencido"),
+    venceAntes: itens.filter((i) => i.situacao === "vence_antes"),
+    total: itens.filter((i) => ["falta", "vencido", "vence_antes"].includes(i.situacao)).length,
+  };
+}

@@ -22,7 +22,7 @@ import type { AnaliseIA, DisputaCompleta, StatusDisputa } from "@/lib/db";
 import { ROTULO_STATUS, TRANSICOES_OPERADOR } from "@/lib/etapas";
 import { formatarData, formatarValor, limparObjeto } from "@/lib/formato";
 import { analisar, enviarAoCliente, lerEditalAcao, mudarStatus, salvarNotas, type Saida } from "@/app/acoes";
-import type { FichaRow } from "@/lib/ficha";
+import { dataDaSessao, type FichaRow } from "@/lib/ficha";
 import type { DocumentoResumo } from "@/lib/documentos";
 import { cn } from "@/lib/utils";
 import FichaEdital from "./FichaEdital";
@@ -30,6 +30,7 @@ import RoteiroDisputa from "./RoteiroDisputa";
 import RegistroLances from "./RegistroLances";
 import { ETAPAS_COM_RESULTADO, type ResultadoDisputa } from "@/lib/resultado";
 import { ETAPAS_COM_GUIA } from "@/lib/guia";
+import { checklistHabilitacao, pendenciasHabilitacao } from "@/lib/documentos";
 import CopiarLink from "./CopiarLink";
 import { Cabecalho } from "./Cabecalho";
 import { TOM_STATUS } from "./tons";
@@ -395,8 +396,38 @@ function Item({
     });
   }
 
+  async function lerEdital() {
+    setLendo(true);
+    setSaida(null);
+    try {
+      const s = await lerEditalAcao(d.id);
+      setSaida({ ok: s.ok, mensagem: s.mensagem });
+      if (s.ficha) {
+        setFicha(s.ficha);
+        setAbrirFicha(true);
+      }
+    } catch (e) {
+      setSaida({ ok: false, mensagem: (e as Error).message });
+    } finally {
+      setLendo(false);
+    }
+  }
+
   const destinos = TRANSICOES_OPERADOR[d.status];
   const podeEnviar = d.status === "sugerida" || d.status === "recusada";
+  // Antes de enviar: o que, pelo edital lido, tiraria o cliente da disputa.
+  const pendencias =
+    podeEnviar && ficha
+      ? pendenciasHabilitacao(
+          checklistHabilitacao(
+            ficha.ficha.documentos_exigidos,
+            cofre,
+            dataDaSessao(ficha.ficha.sessao.data_hora) ?? l.data_encerramento_proposta
+          )
+        )
+      : null;
+  const editalMudou =
+    !!ficha?.versao_pncp && !!l.data_atualizacao_pncp && new Date(l.data_atualizacao_pncp) > new Date(ficha.versao_pncp);
   // O passo adiante desta etapa ganha o destaque; voltar e desistir ficam discretos.
   const proximoPasso = destinos.find((x) => !["descartada", "desistiu", "perdeu", "sugerida"].includes(x));
 
@@ -509,8 +540,44 @@ function Item({
           />
         )}
 
+        {podeEnviar && ficha && pendencias && (pendencias.total > 0 || editalMudou || ficha.ficha.exigencias_tecnicas.length > 0) && (
+          <Aviso tom={pendencias.total > 0 || editalMudou ? "alerta" : "info"} titulo="Antes de enviar, confira">
+            <ul className="list-disc space-y-0.5 pl-4 marker:text-muted-foreground/60">
+              {editalMudou && <li>O edital foi retificado depois da leitura. Leia de novo.</li>}
+              {pendencias.falta.length > 0 && (
+                <li>
+                  Falta no cofre de {nomeCliente}: {pendencias.falta.map((i) => i.rotulo).join(", ")}.
+                </li>
+              )}
+              {pendencias.vencido.length > 0 && <li>Vencido: {pendencias.vencido.map((i) => i.rotulo).join(", ")}.</li>}
+              {pendencias.venceAntes.length > 0 && (
+                <li>Vence antes da sessão: {pendencias.venceAntes.map((i) => i.rotulo).join(", ")}.</li>
+              )}
+              {ficha.ficha.exigencias_tecnicas.length > 0 && (
+                <li>
+                  {ficha.ficha.exigencias_tecnicas.length === 1
+                    ? "1 exigência técnica"
+                    : `${ficha.ficha.exigencias_tecnicas.length} exigências técnicas`}{" "}
+                  (atestados, registros). O cliente verá a lista no portal antes de decidir.
+                </li>
+              )}
+            </ul>
+            {pendencias.total > 0 && (
+              <p className="text-xs text-muted-foreground">
+                O cliente também vê o que falta. Se não der para resolver até a sessão, melhor descartar.
+              </p>
+            )}
+          </Aviso>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
-          {podeEnviar && (
+          {podeEnviar && !ficha && (
+            <Button size="sm" disabled={lendo || comOutro != null} onClick={lerEdital}>
+              {lendo ? <Loader2 className="animate-spin" /> : <FileSearch />}
+              {lendo ? "Lendo o edital… (1 a 3 min)" : "Ler edital para enviar"}
+            </Button>
+          )}
+          {podeEnviar && ficha && (
             <Button
               size="sm"
               disabled={pendente || comOutro != null}
@@ -564,28 +631,13 @@ function Item({
                 : "Analisar com IA"}
           </Button>
 
+          {(ficha || !podeEnviar) && (
           <Button
             size="sm"
             variant="outline"
             disabled={lendo}
             aria-expanded={ficha ? abrirFicha : undefined}
-            onClick={async () => {
-              if (ficha) return setAbrirFicha((x) => !x);
-              setLendo(true);
-              setSaida(null);
-              try {
-                const s = await lerEditalAcao(d.id);
-                setSaida({ ok: s.ok, mensagem: s.mensagem });
-                if (s.ficha) {
-                  setFicha(s.ficha);
-                  setAbrirFicha(true);
-                }
-              } catch (e) {
-                setSaida({ ok: false, mensagem: (e as Error).message });
-              } finally {
-                setLendo(false);
-              }
-            }}
+            onClick={() => (ficha ? setAbrirFicha((x) => !x) : lerEdital())}
           >
             {lendo ? <Loader2 className="animate-spin" /> : ficha ? <FileText /> : <FileSearch />}
             {lendo
@@ -596,6 +648,7 @@ function Item({
                   : "Ficha do edital"
                 : "Ler edital"}
           </Button>
+          )}
 
           {(ETAPAS_COM_RESULTADO as readonly string[]).includes(d.status) && (
             <Button

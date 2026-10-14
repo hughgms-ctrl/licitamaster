@@ -43,3 +43,10 @@ export interface FichaRow {
   modelo: string | null;
   gerado_em: string;
 }
+
+/** "15/10/2026 09:00" (como a IA escreve na ficha) → ISO, para comparar com a validade das certidões. */
+export function dataDaSessao(texto: string | null | undefined): string | null {
+  const m = texto?.match(/(\d{2})\/(\d{2})\/(\d{4})(?:\D+(\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  return `${m[3]}-${m[2]}-${m[1]}T${m[4] ?? "09"}:${m[5] ?? "00"}:00-03:00`;
+}

@@ -55,6 +55,7 @@ export const STATUS_EXCLUSIVOS: StatusDisputa[] = [
 
 /** Texto exato que o cliente confirma ao aprovar. Vai para a auditoria. */
 export const DECLARACAO_APROVACAO =
-  "Confirmo que minha empresa consegue entregar o que esta licitação pede, no prazo e no local " +
-  "indicados, e que o preço mínimo informado cobre todos os meus custos, impostos e a minha margem. " +
+  "Confirmo que vi o que esta licitação exige e que minha empresa consegue entregar o que ela pede, " +
+  "no prazo e no local indicados, e deixar os documentos em dia até a disputa. O preço mínimo informado " +
+  "cobre todos os meus custos, impostos e a minha margem. " +
   "Autorizo a participação em nome da minha empresa sem lances abaixo deste valor.";

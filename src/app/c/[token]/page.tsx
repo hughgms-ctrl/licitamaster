@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { db, type ClienteRow, type DisputaRow, type LicitacaoRow } from "@/lib/db";
-import Portal, { type CartaoPortal } from "@/components/Portal";
+import Portal, { type CartaoPortal, type ExigenciasCliente } from "@/components/Portal";
+import { dataDaSessao, type FichaEdital } from "@/lib/ficha";
+import { checklistHabilitacao, pendenciasHabilitacao } from "@/lib/documentos";
 import { DECLARACAO_APROVACAO } from "@/lib/etapas";
 import { limparObjeto } from "@/lib/formato";
 import { listar as listarCofre } from "@/lib/cofre";
@@ -58,9 +60,31 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
   const { data: fichasRaw } = idsLicitacao.length
     ? await supabase.from("fichas_edital").select("licitacao_id, ficha").in("licitacao_id", idsLicitacao)
     : { data: [] };
-  const resumoFicha = new Map(
-    (fichasRaw ?? []).map((f) => [f.licitacao_id as string, (f.ficha as { resumo_cliente?: string }).resumo_cliente])
-  );
+  const fichas = new Map((fichasRaw ?? []).map((f) => [f.licitacao_id as string, f.ficha as FichaEdital]));
+  const documentos = await listarCofre(cliente.id);
+
+  // Para as licitações esperando decisão: o que o edital exige, cruzado com o
+  // cofre do cliente na data da sessão. É o que ele precisa saber para dizer sim.
+  function exigenciasDe(licitacaoId: string, encerramento: string | null): ExigenciasCliente | null {
+    const f = fichas.get(licitacaoId);
+    if (!f) return null;
+    const itens = checklistHabilitacao(f.documentos_exigidos, documentos, dataDaSessao(f.sessao.data_hora) ?? encerramento);
+    const p = pendenciasHabilitacao(itens);
+    return {
+      documentos: [
+        ...p.falta.map((i) => ({ rotulo: i.rotulo, situacao: "falta" as const })),
+        ...p.vencido.map((i) => ({ rotulo: i.rotulo, situacao: "vencido" as const })),
+        ...p.venceAntes.map((i) => ({ rotulo: i.rotulo, situacao: "vence_antes" as const })),
+      ],
+      documentosProntos: itens.length - p.total,
+      tecnicas: f.exigencias_tecnicas ?? [],
+      visita: f.visita_tecnica,
+      amostra: f.amostra,
+      garantia: f.garantia,
+      entrega: f.prazos?.entrega_execucao ?? null,
+      sessao: f.sessao?.data_hora ?? null,
+    };
+  }
 
   // Só o que o cliente precisa ver. Score, termos, notas internas e análise
   // técnica ficam do lado de cá.
@@ -68,7 +92,7 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
     (d) => ({
       id: d.id,
       status: d.status,
-      resumo: resumoFicha.get(d.licitacao_id) || d.analise_ia?.resumo_cliente || null,
+      resumo: fichas.get(d.licitacao_id)?.resumo_cliente || d.analise_ia?.resumo_cliente || null,
       objeto: limparObjeto(d.licitacao.objeto),
       orgao: d.licitacao.orgao_razao_social,
       local: [d.licitacao.municipio, d.licitacao.uf].filter(Boolean).join("/"),
@@ -77,10 +101,11 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
       encerramento: d.licitacao.data_encerramento_proposta,
       link: d.licitacao.link_pncp ?? d.licitacao.link_sistema_origem,
       precoMinimo: d.preco_minimo,
+      exigencias:
+        d.status === "aguardando_cliente" ? exigenciasDe(d.licitacao_id, d.licitacao.data_encerramento_proposta) : null,
     })
   );
 
-  const documentos = await listarCofre(cliente.id);
   // Consulta à parte: se a coluna ainda não existir no banco, o portal abre
   // sem a seção de preparação em vez de cair.
   const { data: prep } = await supabase.from("clientes").select("preparo").eq("id", cliente.id).maybeSingle();

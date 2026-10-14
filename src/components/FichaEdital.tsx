@@ -1,18 +1,11 @@
 "use client";
 
 import { checklistHabilitacao, type DocumentoResumo, type ItemChecklist } from "@/lib/documentos";
-import type { FichaRow } from "@/lib/ficha";
+import { dataDaSessao, type FichaRow } from "@/lib/ficha";
 import { formatarData, formatarValor } from "@/lib/formato";
 import { FileText } from "lucide-react";
 import { Aviso } from "./ui/aviso";
 import { StatusDot, type Tom } from "./ui/status-dot";
-
-/** "15/10/2026 09:00" → ISO, para comparar com a validade das certidões. */
-function dataDaSessao(texto: string | null): string | null {
-  const m = texto?.match(/(\d{2})\/(\d{2})\/(\d{4})(?:\D+(\d{2}):(\d{2}))?/);
-  if (!m) return null;
-  return `${m[3]}-${m[2]}-${m[1]}T${m[4] ?? "09"}:${m[5] ?? "00"}:00-03:00`;
-}
 
 const ROTULO_ITEM: Record<ItemChecklist["situacao"], string> = {
   ok: "Pronto",

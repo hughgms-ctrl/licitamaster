@@ -4,27 +4,25 @@ name: Coleta PNCP
 # existe é o próprio GitHub Actions: ele bate na rota /api/sync do app
 # publicado, que faz todo o trabalho.
 #
-# Cada execução lê um pedaço e grava onde parou (tabela coleta_estado), então
-# o ciclo completo fecha ao longo de várias execuções. Uma execução curta não
-# é falha — é o desenho.
+# Duas vezes por dia basta: a licitação fica aberta por dias, e o botão
+# "Procurar agora" da Mesa cobre a pressa.
+#
+# Cada chamada à rota lê um pedaço (a função morre aos 60s) e grava onde
+# parou; esta execução chama de novo até a varredura fechar. Se o PNCP
+# recusar uma fatia (429), espera e refaz a varredura uma vez antes de falhar.
 on:
   schedule:
-    # Horários em UTC (Brasília = UTC-3). O GitHub pode atrasar alguns minutos.
-    # Dias úteis, de hora em hora das 7h às 20h de Brasília…
-    - cron: "0 10-23 * * 1-5"
-    # …e às 21h de Brasília (00h UTC do dia seguinte)
-    - cron: "0 0 * * 2-6"
-    # Fim de semana: 9h, 13h e 18h de Brasília. Pouco órgão publica, mas
-    # retificação de edital no sábado acontece.
-    - cron: "0 12,16,21 * * 0,6"
+    # 7h e 19h de Brasília (UTC-3). O GitHub pode atrasar alguns minutos.
+    - cron: "7 10,22 * * *"
   # permite disparar à mão pela aba Actions
   workflow_dispatch:
 
 jobs:
   coletar:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Chamar /api/sync
+      - name: Chamar /api/sync até a varredura fechar
         env:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -36,24 +34,47 @@ jobs:
             exit 1
           fi
 
-          # --max-time acima do teto da função (60s) para o curl não desistir
-          # antes de a Vercel responder.
-          corpo=$(curl -sS --max-time 120 \
-            -w '\n%{http_code}' \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${APP_URL%/}/api/sync")
+          # Uma varredura: chama até fechar o ciclo (no máximo 8 chamadas).
+          # Devolve 0 se todas vieram 200, 1 se alguma perdeu dados, 2 se
+          # a rota recusou (senha errada, sem cliente) e não adianta repetir.
+          varrer() {
+            local limpa=0
+            for i in $(seq 1 8); do
+              # --max-time acima do teto da função (60s) para o curl não
+              # desistir antes de a Vercel responder.
+              corpo=$(curl -sS --max-time 120 \
+                -w '\n%{http_code}' \
+                -H "Authorization: Bearer ${CRON_SECRET}" \
+                "${APP_URL%/}/api/sync")
+              http=$(printf '%s' "$corpo" | tail -n1)
+              json=$(printf '%s' "$corpo" | sed '$d')
+              echo "Chamada $i: HTTP $http"
+              echo "$json"
 
-          http=$(printf '%s' "$corpo" | tail -n1)
-          json=$(printf '%s' "$corpo" | sed '$d')
+              # 500 é veredito do próprio handler: varredura que não vale
+              # como resultado (não leu nada, perdeu uma fatia inteira, ou
+              # pulou mais de um quinto das páginas).
+              case "$http" in
+                200) ;;
+                500) limpa=1 ;;
+                *) return 2 ;;
+              esac
 
-          echo "HTTP $http"
-          echo "$json"
+              fechou=$(printf '%s' "$json" | jq -r 'if .cicloFechou == false then "false" else "true" end' 2>/dev/null || echo true)
+              [ "$fechou" = "true" ] && return $limpa
+            done
+            echo "::warning::A varredura não fechou em 8 chamadas; a próxima execução continua de onde parou."
+            return $limpa
+          }
 
-          # 500 é veredito do próprio handler: varredura que não vale como
-          # resultado (não leu nada, perdeu uma fatia inteira, ou pulou mais
-          # de um quinto das páginas). Falhar aqui faz o GitHub te avisar,
-          # em vez de acumular coletas vazias em silêncio.
-          if [ "$http" != "200" ]; then
-            echo "::error::A coleta não passou (HTTP $http)."
+          varrer; r=$?
+          if [ $r -eq 1 ]; then
+            echo "O PNCP recusou parte da varredura. Esperando 2 minutos para refazer…"
+            sleep 120
+            varrer; r=$?
+          fi
+
+          if [ $r -ne 0 ]; then
+            echo "::error::A coleta não passou (veja as respostas acima)."
             exit 1
           fi

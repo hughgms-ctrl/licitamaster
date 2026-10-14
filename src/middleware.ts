@@ -57,5 +57,5 @@ function bloquear(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!c/|api/sync|api/resumo|entrar|criar-conta|redefinir-senha|auth/|_next/|favicon.ico).*)"],
+  matcher: ["/((?!c/|api/sync|api/resumo|api/alertas|entrar|criar-conta|redefinir-senha|auth/|_next/|favicon.ico).*)"],
 };

@@ -100,7 +100,8 @@ export default async function Guia() {
 
       <p className="mt-8 text-xs leading-relaxed text-muted-foreground">
         Escrito para pregão e dispensa eletrônicos no Compras.gov.br (Lei 14.133/2021). Prazos e regras variam de edital
-        para edital: na dúvida, vale o que está no edital.
+        para edital: na dúvida, vale o que está no edital. Para pedir a revisão de um analista, use o{" "}
+        <a href="/revisao" className="underline">material para revisão</a>.
       </p>
     </div>
   );

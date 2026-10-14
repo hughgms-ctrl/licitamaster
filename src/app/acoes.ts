@@ -9,6 +9,7 @@ import { lerConfigIA } from "@/lib/config-ia";
 import type { FichaRow } from "@/lib/ficha";
 import { FASES, type GuiaMarcado } from "@/lib/guia";
 import type { ResultadoDisputa } from "@/lib/resultado";
+import type { ContratoDisputa } from "@/lib/contrato";
 import { convidarCliente } from "@/lib/notify";
 import { moverDisputa, registrarEvento, TRANSICOES_OPERADOR, urlPortal } from "@/lib/disputas";
 
@@ -201,6 +202,47 @@ export async function salvarResultado(
     dados: { nosso_lance: linha.nosso_lance, vencedor_lance: linha.vencedor_lance, posicao: linha.posicao },
   });
   return { ok: true, mensagem: "Resultado registrado." };
+}
+
+/** Salva o contrato de uma disputa ganha (dados e eventos, tudo de uma vez). */
+export async function salvarContrato(
+  disputaId: string,
+  c: Omit<ContratoDisputa, "disputa_id" | "updated_at">
+): Promise<Saida> {
+  const eu = await exigirOperador();
+  const d = await carregar(disputaId);
+  if (!d) return { ok: false, mensagem: "Disputa não encontrada." };
+  if (d.status !== "ganhou") return { ok: false, mensagem: "Contrato só para disputa ganha." };
+  const data = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  const valor = (n: number | null) => (n != null && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null);
+  const tipos = ["empenho", "entrega", "nota", "pagamento"];
+  const eventos = (c.eventos ?? [])
+    .filter((e) => tipos.includes(e.tipo) && data(e.data))
+    .slice(0, 500)
+    .map((e) => ({
+      id: String(e.id).slice(0, 40),
+      tipo: e.tipo,
+      data: e.data,
+      valor: valor(e.valor),
+      descricao: e.descricao?.trim().slice(0, 300) || null,
+    }));
+  const { error } = await db()
+    .from("contratos_disputa")
+    .upsert(
+      {
+        disputa_id: disputaId,
+        numero: c.numero?.trim().slice(0, 100) || null,
+        valor_contratado: valor(c.valor_contratado),
+        assinado_em: data(c.assinado_em),
+        vigencia_fim: data(c.vigencia_fim),
+        eventos,
+        observacao: c.observacao?.trim().slice(0, 2000) || null,
+        atualizado_por: eu.email,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "disputa_id" }
+    );
+  return error ? { ok: false, mensagem: error.message } : { ok: true, mensagem: "Contrato salvo." };
 }
 
 /** Guarda a proposta ajustada como o operador deixou na tela. */

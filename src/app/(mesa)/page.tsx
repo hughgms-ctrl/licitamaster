@@ -11,6 +11,7 @@ import Mesa from "@/components/Mesa";
 import type { FichaRow } from "@/lib/ficha";
 import type { DocumentoResumo } from "@/lib/documentos";
 import type { ResultadoDisputa } from "@/lib/resultado";
+import type { ContratoDisputa } from "@/lib/contrato";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -39,6 +40,7 @@ export default async function Home() {
   const fichas: Record<string, FichaRow> = {};
   const cofres: Record<string, DocumentoResumo[]> = {};
   const resultados: Record<string, ResultadoDisputa> = {};
+  const contratos: Record<string, ContratoDisputa> = {};
   let falha: string | null = null;
 
   try {
@@ -109,6 +111,11 @@ export default async function Home() {
       const { data: rs } = await supabase.from("resultados_disputa").select("*").in("disputa_id", comSessao);
       for (const r of (rs ?? []) as ResultadoDisputa[]) resultados[r.disputa_id] = r;
     }
+    const ganhas = encerradas.filter((d) => d.status === "ganhou").map((d) => d.id);
+    if (ganhas.length) {
+      const { data: cs } = await supabase.from("contratos_disputa").select("*").in("disputa_id", ganhas);
+      for (const c of (cs ?? []) as ContratoDisputa[]) contratos[c.disputa_id] = c;
+    }
     for (const doc of (ds.data ?? []) as (DocumentoResumo & { cliente_id: string })[]) {
       (cofres[doc.cliente_id] ??= []).push(doc);
     }
@@ -170,6 +177,7 @@ export default async function Home() {
       fichas={fichas}
       cofres={cofres}
       resultados={resultados}
+      contratos={contratos}
     />
   );
 }

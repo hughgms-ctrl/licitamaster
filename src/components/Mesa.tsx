@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   BookOpen,
+  FileCheck2,
   FileSpreadsheet,
   Gavel,
   ExternalLink,
@@ -29,6 +30,8 @@ import { cn } from "@/lib/utils";
 import FichaEdital from "./FichaEdital";
 import RoteiroDisputa from "./RoteiroDisputa";
 import RegistroLances from "./RegistroLances";
+import ContratoPainel from "./ContratoPainel";
+import type { ContratoDisputa } from "@/lib/contrato";
 import { ETAPAS_COM_RESULTADO, type ResultadoDisputa } from "@/lib/resultado";
 import { ETAPAS_COM_GUIA } from "@/lib/guia";
 import { checklistHabilitacao, pendenciasHabilitacao } from "@/lib/documentos";
@@ -118,9 +121,11 @@ interface Props {
   cofres: Record<string, DocumentoResumo[]>;
   /** disputa → resultado da sessão já registrado */
   resultados?: Record<string, ResultadoDisputa>;
+  /** disputa ganha → contrato */
+  contratos?: Record<string, ContratoDisputa>;
 }
 
-export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaColeta, fichas, cofres, resultados = {} }: Props) {
+export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaColeta, fichas, cofres, resultados = {}, contratos = {} }: Props) {
   const [disputas, setDisputas] = useState(iniciais);
   // Depois de "Buscar agora" a página recarrega os dados do servidor; sem
   // isto a lista continuaria mostrando o estado de antes da busca.
@@ -344,6 +349,7 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
               fichaInicial={fichas[d.licitacao_id] ?? null}
               cofre={cofres[d.cliente_id] ?? []}
               resultadoInicial={resultados[d.id] ?? null}
+              contratoInicial={contratos[d.id] ?? null}
             />
           ))}
         </div>
@@ -356,6 +362,7 @@ function Item({
   fichaInicial,
   cofre,
   resultadoInicial,
+  contratoInicial,
   d,
   agora,
   comOutro,
@@ -369,6 +376,7 @@ function Item({
   fichaInicial: FichaRow | null;
   cofre: DocumentoResumo[];
   resultadoInicial: ResultadoDisputa | null;
+  contratoInicial: ContratoDisputa | null;
 }) {
   const [pendente, iniciar] = useTransition();
   const [saida, setSaida] = useState<Saida | null>(null);
@@ -378,6 +386,8 @@ function Item({
   const [abrirGuia, setAbrirGuia] = useState(false);
   const [resultado, setResultado] = useState<ResultadoDisputa | null>(resultadoInicial);
   const [abrirResultado, setAbrirResultado] = useState(false);
+  const [contrato, setContrato] = useState<ContratoDisputa | null>(contratoInicial);
+  const [abrirContrato, setAbrirContrato] = useState(false);
   const [lendo, setLendo] = useState(false);
   const [notas, setNotas] = useState(d.notas_operador ?? "");
   const [confirmar, dialogo] = useConfirmar();
@@ -526,6 +536,9 @@ function Item({
 
         {abrirGuia && <RoteiroDisputa d={d} ficha={ficha} />}
         {abrirResultado && <RegistroLances d={d} inicial={resultado} salvo={setResultado} />}
+        {abrirContrato && (
+          <ContratoPainel d={d} inicial={contrato} valorPadrao={resultado?.nosso_lance ?? null} salvo={setContrato} />
+        )}
         {abrirAnalise && d.analise_ia && <Analise a={d.analise_ia} />}
         {abrirFicha && ficha && (
           <FichaEdital
@@ -660,6 +673,18 @@ function Item({
             >
               <Gavel />
               {abrirResultado ? "Fechar lances" : resultado ? "Lances registrados" : "Registrar lances"}
+            </Button>
+          )}
+
+          {d.status === "ganhou" && (
+            <Button
+              size="sm"
+              variant={contrato ? "outline" : "secondary"}
+              aria-expanded={abrirContrato}
+              onClick={() => setAbrirContrato((x) => !x)}
+            >
+              <FileCheck2 />
+              {abrirContrato ? "Fechar contrato" : contrato ? "Contrato" : "Registrar contrato"}
             </Button>
           )}
 

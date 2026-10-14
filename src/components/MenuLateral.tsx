@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { BookOpen, Building2, ChevronsUpDown, LayoutDashboard, LogOut, Menu, Settings } from "lucide-react";
+import { BookOpen, Building2, ChevronsUpDown, LayoutDashboard, LogOut, Menu, Settings, Wallet } from "lucide-react";
 import { sair } from "@/app/entrar/acoes";
 import { cn } from "@/lib/utils";
 import { Marca } from "./Marca";
@@ -22,6 +22,7 @@ import {
 const ITENS = [
   { href: "/", rotulo: "Mesa", icone: LayoutDashboard },
   { href: "/clientes", rotulo: "Clientes", icone: Building2 },
+  { href: "/financeiro", rotulo: "Financeiro", icone: Wallet },
   { href: "/guia", rotulo: "Guia da disputa", icone: BookOpen },
   { href: "/configuracoes", rotulo: "Configurações", icone: Settings },
 ];

@@ -131,7 +131,7 @@ export const FASES: Fase[] = [
         id: "proposta_ajustada",
         titulo: "Enviar a proposta ajustada ao valor final",
         detalhe:
-          "O pregoeiro pede a proposta com o valor do último lance, item por item, no modelo do edital. Prazo comum: poucas horas. Confira no edital e no chat.",
+          "O pregoeiro pede a proposta com o valor do último lance, item por item, no modelo do edital. Prazo comum: poucas horas. Use \"Proposta ajustada\" na mesa: ela distribui o lance entre os itens, escreve o valor por extenso e sai pronta para salvar em PDF. Confira com o modelo do edital.",
         cuidado: "Valor unitário vezes quantidade tem que bater com o total. Erro de conta é motivo de recusa.",
       },
       {

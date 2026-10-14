@@ -124,11 +124,11 @@ export function MenuLateral({ usuario }: { usuario: Usuario | null }) {
   const [aberto, setAberto] = useState(false);
   return (
     <>
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 border-r border-sidebar-border bg-sidebar lg:block">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 print:!hidden border-r border-sidebar-border bg-sidebar lg:block">
         <Conteudo usuario={usuario} />
       </aside>
 
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur lg:hidden">
+      <header className="sticky top-0 z-30 flex h-14 print:hidden items-center gap-2 border-b bg-background/85 px-3 backdrop-blur lg:hidden">
         <Button variant="ghost" size="icon" aria-label="Abrir menu" onClick={() => setAberto(true)}>
           <Menu />
         </Button>

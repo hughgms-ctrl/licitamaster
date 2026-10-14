@@ -109,6 +109,8 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
   // Consulta à parte: se a coluna ainda não existir no banco, o portal abre
   // sem a seção de preparação em vez de cair.
   const { data: prep } = await supabase.from("clientes").select("preparo").eq("id", cliente.id).maybeSingle();
+  // taxa de êxito, para a calculadora de preço (a coluna pode não existir em bancos antigos)
+  const { data: cobranca } = await supabase.from("clientes").select("percentual_exito").eq("id", cliente.id).maybeSingle();
 
   return (
     <Portal
@@ -117,6 +119,7 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
       contato={cliente.contato_nome}
       cartoes={cartoes}
       declaracao={DECLARACAO_APROVACAO}
+      assessoriaPct={(cobranca?.percentual_exito as number | null | undefined) ?? null}
       preparo={<PreparoPortal token={token} preparo={(prep?.preparo as Preparo | undefined) ?? {}} documentos={documentos} />}
       cofre={
         <Cofre

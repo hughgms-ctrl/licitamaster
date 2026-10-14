@@ -18,6 +18,12 @@ export interface ItemProposta {
   extras?: Record<string, string>;
 }
 
+/** Declaração geral que vai em toda proposta ajustada. */
+export const DECLARACAO_PROPOSTA =
+  "Declaramos que nos preços propostos estão incluídas todas as despesas necessárias à execução do objeto, " +
+  "como tributos, encargos sociais e trabalhistas, fretes, seguros e quaisquer outros custos, e que atendemos " +
+  "a todas as condições do edital e do termo de referência.";
+
 const centavos = (v: number) => Math.round(v * 100);
 
 /** "600 horas" → { n: 600, unidade: "horas" } · "12 meses" · "1.200 un" · null → 1 "serviço" */

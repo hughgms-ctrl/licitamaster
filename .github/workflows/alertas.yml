@@ -1,0 +1,32 @@
+name: Alertas diários
+
+# Uma vez por dia: certidões vencendo (para o cliente), sessões nas
+# próximas 36h e documentos que tiram o cliente da disputa (para você).
+# O mesmo aviso não se repete: o sistema guarda o que já mandou.
+on:
+  schedule:
+    # 7h30 de Brasília, todos os dias (UTC-3)
+    - cron: "30 10 * * *"
+  workflow_dispatch:
+
+jobs:
+  alertas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar /api/alertas
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -uo pipefail
+          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Faltam os secrets APP_URL e/ou CRON_SECRET no repositório."
+            exit 1
+          fi
+          corpo=$(curl -sS --max-time 90 -w '\n%{http_code}' \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL%/}/api/alertas")
+          http=$(printf '%s' "$corpo" | tail -n1)
+          echo "HTTP $http"
+          printf '%s' "$corpo" | sed '$d'
+          [ "$http" = "200" ] || { echo "::error::Os alertas falharam (HTTP $http)."; exit 1; }

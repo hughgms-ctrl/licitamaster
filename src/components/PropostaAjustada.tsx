@@ -11,6 +11,7 @@ import { formatarCnpj, limparObjeto } from "@/lib/formato";
 import { lerReais } from "@/lib/resultado";
 import {
   brl,
+  DECLARACAO_PROPOSTA,
   distribuir,
   lerQuantidade,
   porExtenso,
@@ -65,11 +66,6 @@ function cpfFormatado(c: string | null | undefined) {
   const d = (c ?? "").replace(/\D/g, "");
   return d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : (c ?? "");
 }
-
-const DECLARACAO =
-  "Declaramos que nos preços propostos estão incluídas todas as despesas necessárias à execução do objeto, " +
-  "como tributos, encargos sociais e trabalhistas, fretes, seguros e quaisquer outros custos, e que atendemos " +
-  "a todas as condições do edital e do termo de referência.";
 
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
@@ -476,7 +472,7 @@ export default function PropostaAjustada({
           </div>
         </section>
 
-        <p className="pt-5 print:pt-3">{DECLARACAO}</p>
+        <p className="pt-5 print:pt-3">{DECLARACAO_PROPOSTA}</p>
         {declaracoes.some((x) => x.incluir) && (
           <div className="space-y-1 pt-3 print:pt-2">
             <p>Declaramos ainda, conforme exigido no edital:</p>

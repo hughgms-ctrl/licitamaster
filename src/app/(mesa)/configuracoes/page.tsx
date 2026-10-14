@@ -7,6 +7,8 @@ import { Secao } from "@/components/ui/campo";
 import { exigirOperadorPagina } from "@/lib/auth";
 import FormIA from "@/components/FormIA";
 import Equipe from "@/components/Equipe";
+import FormAssessoria from "@/components/FormAssessoria";
+import { lerAssessoria } from "@/lib/assessoria";
 import { db } from "@/lib/db";
 import { MODELOS_ANTHROPIC, MODELO_PADRAO, resumoConfigIA } from "@/lib/config-ia";
 import { formatarData } from "@/lib/formato";
@@ -117,6 +119,7 @@ export default async function Configuracoes() {
               )}
             </Secao>
             {membros && <Equipe eu={eu.email} membros={membros} />}
+            {eu.papel === "admin" && <FormAssessoria atual={await lerAssessoria().catch(() => null)} />}
           </div>
         </section>
       </div>

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { exigirAdmin, exigirOperador } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { removerConfigIA, salvarConfigIA, testarChave, type Provedor } from "@/lib/config-ia";
+import { gravarAssessoria } from "@/lib/assessoria";
 
 export interface SaidaConfig {
   ok: boolean;
@@ -60,4 +61,22 @@ export async function removerOperador(email: string): Promise<void> {
   if (email === admin.email) throw new Error("Você não pode remover a si mesmo.");
   await db().from("operadores").delete().eq("email", email);
   revalidatePath("/configuracoes");
+}
+
+/** Dados da assessoria e dos procuradores, usados na procuração. */
+export async function salvarAssessoria(_: SaidaConfig | null, form: FormData): Promise<SaidaConfig> {
+  await exigirAdmin();
+  const so = (k: string) => String(form.get(k) ?? "").trim();
+  const digitos = (v: string) => v.replace(/\D/g, "");
+  const procuradores = [0, 1, 2]
+    .map((i) => ({ nome: so(`p${i}_nome`), cpf: digitos(so(`p${i}_cpf`)), qualificacao: so(`p${i}_qualificacao`) }))
+    .filter((p) => p.nome);
+  if (procuradores.length === 0) return { ok: false, mensagem: "Informe pelo menos um procurador (nome e CPF)." };
+  const semCpf = procuradores.find((p) => p.cpf.length !== 11);
+  if (semCpf) return { ok: false, mensagem: `O CPF de ${semCpf.nome} precisa ter 11 dígitos.` };
+  const cnpj = digitos(so("cnpj"));
+  if (cnpj && cnpj.length !== 14) return { ok: false, mensagem: "O CNPJ da assessoria precisa ter 14 dígitos." };
+  await gravarAssessoria({ razao_social: so("razao_social"), cnpj, endereco: so("endereco"), procuradores });
+  revalidatePath("/configuracoes");
+  return { ok: true, mensagem: "Dados da assessoria salvos. A procuração já sai com eles." };
 }

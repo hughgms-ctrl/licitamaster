@@ -64,7 +64,7 @@ export const ITENS_MANUAIS: ItemManual[] = [
     obrigatorio: true,
     dica: "Procuração assinada (gov.br ou cartório) dando poderes para o operador dar lances, assinar proposta e declarações. Guardar no cofre como \"Procuração\".",
     instrucao:
-      "Para darmos os lances em nome da sua empresa, precisamos de uma procuração. Mandamos o modelo pronto; você assina pelo gov.br, de graça, e envia aqui nos documentos.",
+      "Para darmos os lances em nome da sua empresa, precisamos de uma procuração. Ela já está pronta com os seus dados: abra, salve em PDF, assine pelo gov.br (é de graça) e envie aqui nos documentos.",
   },
   {
     id: "outros_portais",

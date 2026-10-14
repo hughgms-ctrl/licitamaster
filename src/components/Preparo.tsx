@@ -108,6 +108,7 @@ export default function Preparo({
           <div className="divide-y overflow-hidden rounded-lg border bg-card">
             {ITENS_MANUAIS.filter((i) => i.grupo === g).map((item) => (
               <LinhaManual
+                clienteId={clienteId}
                 key={item.id}
                 item={item}
                 estado={estadoItem(preparo, item.id)}
@@ -163,10 +164,12 @@ export default function Preparo({
 }
 
 function LinhaManual({
+  clienteId,
   item,
   estado,
   salvar,
 }: {
+  clienteId: string;
   item: ItemManual;
   estado: { status: StatusPreparo; nota?: string | null; em?: string; por?: string };
   salvar: (status: StatusPreparo, nota: string | null) => Promise<void>;
@@ -187,6 +190,17 @@ function LinhaManual({
             {!item.obrigatorio && <span className="text-xs text-muted-foreground">opcional</span>}
           </div>
           <p className="text-sm leading-relaxed text-muted-foreground">{item.dica}</p>
+          {item.id === "representante" && (
+            <a
+              href={`/clientes/${clienteId}/procuracao`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline dark:text-sidebar-primary"
+            >
+              <ExternalLink className="size-3" />
+              Gerar a procuração
+            </a>
+          )}
           {item.link && (
             <a
               href={item.link.url}

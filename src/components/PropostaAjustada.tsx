@@ -24,6 +24,7 @@ import { Input } from "./ui/input";
 import { NativeSelect } from "./ui/native-select";
 import { Campo } from "./ui/campo";
 import { Aviso } from "./ui/aviso";
+import { Linha } from "./ui/linha-papel";
 
 type Modo = "global" | "item";
 
@@ -521,24 +522,6 @@ export default function PropostaAjustada({
 
 function reais(n: number) {
   return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-/** Campo de texto na tela; no papel vira só o texto, que pode quebrar de linha. */
-function Linha({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <>
-      <input
-        {...props}
-        className={cn(
-          "w-full min-w-0 border-b border-dashed border-zinc-300 bg-transparent px-0.5 text-zinc-900 placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none print:hidden",
-          className
-        )}
-      />
-      <span className={cn("hidden whitespace-pre-wrap print:inline", className?.includes("text-center") && "print:block")}>
-        {String(props.value ?? "")}
-      </span>
-    </>
-  );
 }
 
 function Condicao({ rotulo, ...props }: { rotulo: string } & React.InputHTMLAttributes<HTMLInputElement>) {

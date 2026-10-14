@@ -25,12 +25,32 @@ function lerFormulario(form: FormData) {
     whatsapp: digitos(so(form.get("whatsapp"))) || null,
     email: so(form.get("email")) || null,
     contexto: so(form.get("contexto")),
+    endereco: so(form.get("endereco")) || null,
+    cidade_uf: so(form.get("cidade_uf")) || null,
+    representante_nome: so(form.get("representante_nome")) || null,
+    representante_cpf: digitos(so(form.get("representante_cpf"))) || null,
+    representante_cargo: so(form.get("representante_cargo")) || null,
   };
+}
+
+const CAMPOS_PROPOSTA = ["endereco", "cidade_uf", "representante_nome", "representante_cpf", "representante_cargo"] as const;
+
+/** Sem os campos da proposta: para quando a migration deles ainda não rodou no banco. */
+function semCamposProposta<T extends Record<string, unknown>>(c: T): T {
+  const x = { ...c };
+  for (const k of CAMPOS_PROPOSTA) delete x[k];
+  return x;
+}
+
+/** Coluna que o banco ainda não conhece (PostgREST PGRST204 / Postgres 42703). */
+function colunaFaltando(e: { code?: string; message?: string } | null) {
+  return !!e && (e.code === "PGRST204" || e.code === "42703" || /column .* does not exist|Could not find the/i.test(e.message ?? ""));
 }
 
 function validar(c: ReturnType<typeof lerFormulario>): string | null {
   if (!c.razao_social) return "Informe a razão social.";
   if (c.cnpj.length !== 14) return "O CNPJ precisa ter 14 dígitos.";
+  if (c.representante_cpf && c.representante_cpf.length !== 11) return "O CPF do representante precisa ter 11 dígitos.";
   if (c.whatsapp && c.whatsapp.length < 12) {
     return "WhatsApp no formato 55 + DDD + número (ex: 5527999999999).";
   }
@@ -43,9 +63,12 @@ export async function criarCliente(_: string | null, form: FormData): Promise<st
   const erro = validar(c);
   if (erro) return erro;
 
-  const { data, error } = await db().from("clientes").insert(c).select("id").single();
-  if (error) {
-    return error.code === "23505" ? "Já existe um cliente com este CNPJ." : error.message;
+  let { data, error } = await db().from("clientes").insert(c).select("id").single();
+  if (colunaFaltando(error)) {
+    ({ data, error } = await db().from("clientes").insert(semCamposProposta(c)).select("id").single());
+  }
+  if (error || !data) {
+    return error?.code === "23505" ? "Já existe um cliente com este CNPJ." : (error?.message ?? "Não deu para cadastrar.");
   }
   await registrarEvento({ cliente_id: data.id, ator: "operador", tipo: "cliente_criado" });
   redirect(`/clientes/${data.id}`);
@@ -61,7 +84,8 @@ export async function salvarCliente(
   const erro = validar(c);
   if (erro) return erro;
 
-  const { error } = await db().from("clientes").update(c).eq("id", id);
+  let { error } = await db().from("clientes").update(c).eq("id", id);
+  if (colunaFaltando(error)) ({ error } = await db().from("clientes").update(semCamposProposta(c)).eq("id", id));
   if (error) return error.code === "23505" ? "Já existe outro cliente com este CNPJ." : error.message;
   revalidatePath(`/clientes/${id}`);
   revalidatePath("/clientes");

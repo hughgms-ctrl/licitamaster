@@ -137,6 +137,19 @@ export default function FichaEdital({
         </section>
       )}
 
+      {f.proposta && (f.proposta.colunas.length > 0 || f.proposta.declaracoes.length > 0 || f.proposta.observacoes.length > 0) && (
+        <div className="grid gap-5 md:grid-cols-2">
+          <Lista
+            titulo="Na proposta de preços"
+            itens={[
+              ...(f.proposta.colunas.length ? [`Colunas pedidas: ${f.proposta.colunas.join(", ")}`] : []),
+              ...f.proposta.observacoes,
+            ]}
+          />
+          <Lista titulo="Declarações que vão na proposta" itens={f.proposta.declaracoes} />
+        </div>
+      )}
+
       <div className="grid gap-5 md:grid-cols-2">
         <Lista titulo="Perguntas para o pregoeiro" itens={f.perguntas_esclarecimento} />
         <Lista titulo="Penalidades" itens={f.penalidades} />

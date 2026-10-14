@@ -14,6 +14,8 @@ export interface ItemProposta {
   unitario: number;
   incluir: boolean;
   marca: string;
+  /** colunas a mais que o modelo de proposta do edital pede (ex: "prazo de garantia") */
+  extras?: Record<string, string>;
 }
 
 const centavos = (v: number) => Math.round(v * 100);

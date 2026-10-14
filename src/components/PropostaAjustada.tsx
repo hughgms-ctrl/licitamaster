@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowLeft, Printer, Scale } from "lucide-react";
+import { ArrowLeft, FileSearch, Loader2, Printer, RotateCcw, Save, Scale } from "lucide-react";
+import { lerEditalAcao, salvarProposta } from "@/app/acoes";
+import { formatarData } from "@/lib/formato";
 import type { ClienteRow, DisputaCompleta } from "@/lib/db";
 import type { FichaRow } from "@/lib/ficha";
 import { formatarCnpj, limparObjeto } from "@/lib/formato";
@@ -25,6 +27,44 @@ import { Aviso } from "./ui/aviso";
 
 type Modo = "global" | "item";
 
+interface Cabecalho {
+  endereco: string;
+  telefone: string;
+  email: string;
+  processo: string;
+  validade: string;
+  prazo: string;
+  pagamento: string;
+  banco: string;
+  cidade: string;
+  data: string;
+  representante: string;
+  cpf: string;
+  cargo: string;
+}
+
+interface Dados {
+  modo: Modo;
+  lance: string;
+  itens: ItemProposta[];
+  cabecalho: Cabecalho;
+  declaracoes: { texto: string; incluir: boolean }[];
+}
+
+export interface PropostaSalva {
+  dados: Dados;
+  updated_at: string;
+  salvo_por: string | null;
+}
+
+/** Colunas do edital que a coluna "Marca/modelo" já cobre. */
+const JA_TEM = /marca|modelo|fabricante|item|descri|quantidade|qtd|unidade|unit[aá]rio|total|valor/i;
+
+function cpfFormatado(c: string | null | undefined) {
+  const d = (c ?? "").replace(/\D/g, "");
+  return d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : (c ?? "");
+}
+
 const DECLARACAO =
   "Declaramos que nos preços propostos estão incluídas todas as despesas necessárias à execução do objeto, " +
   "como tributos, encargos sociais e trabalhistas, fretes, seguros e quaisquer outros custos, e que atendemos " +
@@ -43,23 +83,27 @@ export default function PropostaAjustada({
   ficha,
   lanceFinal,
   dadosBancarios,
+  salva,
 }: {
   d: DisputaCompleta;
-  cliente: Pick<ClienteRow, "razao_social" | "nome_fantasia" | "cnpj" | "contato_nome" | "email" | "whatsapp">;
+  cliente: ClienteRow;
   ficha: FichaRow | null;
   lanceFinal: number | null;
   dadosBancarios: string | null;
+  salva: PropostaSalva | null;
 }) {
   const l = d.licitacao;
   const f = ficha?.ficha;
   const criterio = f?.sessao.criterio_julgamento?.toLowerCase() ?? "";
   const itensFicha = f?.itens ?? [];
+  const colunasExtras = (f?.proposta?.colunas ?? []).filter((c) => !JA_TEM.test(c)).slice(0, 3);
+  const [salvando, iniciarSalvar] = useTransition();
+  const [salvoEm, setSalvoEm] = useState<string | null>(salva?.updated_at ?? null);
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+  const [relendo, setRelendo] = useState(false);
+  const [erroLeitura, setErroLeitura] = useState<string | null>(null);
 
-  const [modo, setModo] = useState<Modo>(
-    itensFicha.length <= 1 || criterio.includes("global") || !criterio.includes("item") ? "global" : "item"
-  );
-  const [lance, setLance] = useState(lanceFinal ? reais(lanceFinal) : "");
-  const [itens, setItens] = useState<ItemProposta[]>(() => {
+  function itensDaFicha(): ItemProposta[] {
     const base: ItemProposta[] = itensFicha.length
       ? itensFicha.map((it) => {
           const q = lerQuantidade(it.quantidade);
@@ -85,25 +129,67 @@ export default function PropostaAjustada({
           },
         ];
     return lanceFinal ? distribuir(base, lanceFinal).itens : base;
-  });
+  }
+
+  const inicial = salva?.dados;
+  const [modo, setModo] = useState<Modo>(
+    inicial?.modo ?? (itensFicha.length <= 1 || criterio.includes("global") || !criterio.includes("item") ? "global" : "item")
+  );
+  const [lance, setLance] = useState(inicial?.lance ?? (lanceFinal ? reais(lanceFinal) : ""));
+  const [itens, setItens] = useState<ItemProposta[]>(() => inicial?.itens ?? itensDaFicha());
   const [sobra, setSobra] = useState(0);
+  const [declaracoes, setDeclaracoes] = useState(
+    () => inicial?.declaracoes ?? (f?.proposta?.declaracoes ?? []).map((texto) => ({ texto, incluir: true }))
+  );
 
   const hoje = new Date();
-  const [cabecalho, setCabecalho] = useState({
-    endereco: "",
-    telefone: cliente.whatsapp ?? "",
-    email: cliente.email ?? "",
-    processo: l.processo ?? "",
-    validade: f?.prazos.validade_proposta ?? "60 (sessenta) dias",
-    prazo: f?.prazos.entrega_execucao ?? "",
-    pagamento: f?.prazos.pagamento ?? "",
-    banco: dadosBancarios ?? "",
-    cidade: "",
-    data: `${hoje.getDate()} de ${MESES[hoje.getMonth()]} de ${hoje.getFullYear()}`,
-    representante: cliente.contato_nome ?? "",
-    cpf: "",
-    cargo: "Sócio-administrador",
-  });
+  const [cabecalho, setCabecalho] = useState<Cabecalho>(
+    () =>
+      inicial?.cabecalho ?? {
+        endereco: cliente.endereco ?? "",
+        telefone: cliente.whatsapp ?? "",
+        email: cliente.email ?? "",
+        processo: l.processo ?? "",
+        validade: f?.prazos.validade_proposta ?? "60 (sessenta) dias",
+        prazo: f?.prazos.entrega_execucao ?? "",
+        pagamento: f?.prazos.pagamento ?? "",
+        banco: dadosBancarios ?? "",
+        cidade: cliente.cidade_uf ?? "",
+        data: `${hoje.getDate()} de ${MESES[hoje.getMonth()]} de ${hoje.getFullYear()}`,
+        representante: cliente.representante_nome ?? cliente.contato_nome ?? "",
+        cpf: cpfFormatado(cliente.representante_cpf),
+        cargo: cliente.representante_cargo ?? "Sócio-administrador",
+      }
+  );
+
+  function salvar() {
+    setErroSalvar(null);
+    const dados: Dados = { modo, lance, itens, cabecalho, declaracoes };
+    iniciarSalvar(async () => {
+      try {
+        const s = await salvarProposta(d.id, dados, totalProposta(itens));
+        if (s.ok) setSalvoEm(new Date().toISOString());
+        else setErroSalvar(s.mensagem);
+      } catch (e) {
+        setErroSalvar((e as Error).message);
+      }
+    });
+  }
+
+  async function lerDeNovo() {
+    setRelendo(true);
+    setErroLeitura(null);
+    try {
+      const s = await lerEditalAcao(d.id);
+      if (!s.ok) setErroLeitura(s.mensagem);
+      // a página remonta a partir da ficha nova; o que estava salvo continua salvo
+      else window.location.reload();
+    } catch (e) {
+      setErroLeitura((e as Error).message);
+    } finally {
+      setRelendo(false);
+    }
+  }
   const campo = (k: keyof typeof cabecalho) => ({
     value: cabecalho[k],
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -121,7 +207,7 @@ export default function PropostaAjustada({
     if (f && l.valor_estimado && somaFicha > 0 && Math.abs(somaFicha - l.valor_estimado) / l.valor_estimado > 0.02) {
       xs.push({
         tom: "alerta",
-        texto: `A soma dos itens da ficha (${brl(somaFicha)}) não bate com o valor estimado da licitação (${brl(l.valor_estimado)}). Pode faltar item, ou a ficha anotou valores unitários. Confira com o edital.`,
+        texto: `A soma dos itens da ficha (${brl(somaFicha)}) não bate com o valor estimado da licitação (${brl(l.valor_estimado)}). Pode faltar item, ou a ficha é antiga e anotou valores unitários. Use "Ler o edital de novo" ou confira com o edital.`,
       });
     }
     if (modo === "global" && lanceN && Math.round(total * 100) !== Math.round(lanceN * 100)) {
@@ -149,6 +235,14 @@ export default function PropostaAjustada({
     return xs;
   }, [f, itensFicha, l.valor_estimado, modo, lanceN, total, sobra, itens, d.preco_minimo, cabecalho]);
 
+  // Ficha que não ajuda a proposta: sem leitura, lida antes de anotar o que o
+  // edital pede na proposta, ou com itens que não somam o estimado.
+  const somaItensFicha = itensFicha.reduce((s, i) => s + (i.valor_estimado ?? 0), 0);
+  const precisaReler =
+    !f ||
+    !f.proposta ||
+    (!!l.valor_estimado && somaItensFicha > 0 && Math.abs(somaItensFicha - l.valor_estimado) / l.valor_estimado > 0.02);
+
   function mudarItem(k: number, campos: Partial<ItemProposta>) {
     setItens((xs) => xs.map((x, n) => (n === k ? { ...x, ...campos } : x)));
   }
@@ -168,11 +262,21 @@ export default function PropostaAjustada({
               Readequada ao valor final, para enviar ao pregoeiro. Confira, ajuste e imprima ou salve em PDF.
             </p>
           </div>
-          <Button onClick={() => window.print()}>
-            <Printer />
-            Imprimir ou salvar PDF
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {salvando ? "Salvando…" : salvoEm ? `Salva em ${formatarData(salvoEm)}` : "Ainda não salva"}
+            </span>
+            <Button variant="outline" disabled={salvando} onClick={salvar}>
+              {salvando ? <Loader2 className="animate-spin" /> : <Save />}
+              Salvar
+            </Button>
+            <Button onClick={() => window.print()}>
+              <Printer />
+              Imprimir ou salvar PDF
+            </Button>
+          </div>
         </div>
+        {erroSalvar && <Aviso tom="erro">Não deu para salvar: {erroSalvar}</Aviso>}
 
         <div className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-[14rem_14rem_auto] sm:items-end">
           <Campo rotulo="Como ajustar">
@@ -206,11 +310,42 @@ export default function PropostaAjustada({
               Digite na tabela o valor unitário final de cada item que o cliente ganhou e desmarque os que ele não disputou.
             </p>
           )}
-          <p className="text-xs leading-relaxed text-muted-foreground sm:col-span-3">
-            A distribuição aplica o mesmo desconto a todos os itens, na proporção do valor estimado. Se o edital tiver um
-            modelo de proposta em anexo, siga a ordem e as colunas dele.
-          </p>
+          <div className="flex flex-wrap items-center gap-2 sm:col-span-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setItens(itensDaFicha());
+                setDeclaracoes((f?.proposta?.declaracoes ?? []).map((texto) => ({ texto, incluir: true })));
+                setSobra(0);
+              }}
+            >
+              <RotateCcw />
+              Refazer a partir da ficha
+            </Button>
+            {precisaReler && (
+              <Button variant="ghost" size="sm" disabled={relendo} onClick={lerDeNovo}>
+                {relendo ? <Loader2 className="animate-spin" /> : <FileSearch />}
+                {relendo ? "Lendo o edital… (1 a 3 min)" : f ? "Ler o edital de novo" : "Ler o edital"}
+              </Button>
+            )}
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              A distribuição aplica o mesmo desconto a todos os itens, na proporção do valor estimado.
+            </p>
+          </div>
         </div>
+
+        {erroLeitura && <Aviso tom="erro">{erroLeitura}</Aviso>}
+        {f?.proposta && (f.proposta.observacoes.length > 0 || f.proposta.colunas.length > 0) && (
+          <Aviso titulo="O edital pede na proposta">
+            <ul className="list-disc space-y-0.5 pl-4">
+              {f.proposta.colunas.length > 0 && <li>Colunas: {f.proposta.colunas.join(", ")}.</li>}
+              {f.proposta.observacoes.map((o) => (
+                <li key={o}>{o}</li>
+              ))}
+            </ul>
+          </Aviso>
+        )}
 
         {avisos.map((a) => (
           <Aviso key={a.texto} tom={a.tom}>
@@ -262,8 +397,13 @@ export default function PropostaAjustada({
               <tr className="bg-zinc-100 text-left">
                 <th className="w-6 border border-zinc-300 p-1.5 print:hidden" aria-label="Incluir" />
                 <th className="w-10 border border-zinc-300 p-1.5">Item</th>
-                <th className="border border-zinc-300 p-1.5">Descrição</th>
+                <th className="min-w-[9rem] border border-zinc-300 p-1.5 print:min-w-[14rem]">Descrição</th>
                 <th className="w-28 border border-zinc-300 p-1.5">Marca/modelo</th>
+                {colunasExtras.map((c) => (
+                  <th key={c} className="w-24 border border-zinc-300 p-1.5 first-letter:uppercase">
+                    {c}
+                  </th>
+                ))}
                 <th className="w-16 border border-zinc-300 p-1.5 text-right">Qtd.</th>
                 <th className="w-20 border border-zinc-300 p-1.5">Unid.</th>
                 <th className="w-28 border border-zinc-300 p-1.5 text-right">Valor unitário</th>
@@ -287,6 +427,16 @@ export default function PropostaAjustada({
                   <td className="border border-zinc-300 p-1.5">
                     <Linha placeholder="—" value={it.marca} onChange={(e) => mudarItem(k, { marca: e.target.value })} />
                   </td>
+                  {colunasExtras.map((c) => (
+                    <td key={c} className="border border-zinc-300 p-1.5">
+                      <Linha
+                        placeholder="—"
+                        aria-label={`${c} do item ${k + 1}`}
+                        value={it.extras?.[c] ?? ""}
+                        onChange={(e) => mudarItem(k, { extras: { ...(it.extras ?? {}), [c]: e.target.value } })}
+                      />
+                    </td>
+                  ))}
                   <td className="border border-zinc-300 p-1.5 text-right">
                     <NumeroCampo valor={it.quantidade} casas={0} onValor={(v) => mudarItem(k, { quantidade: v || 1 })} />
                   </td>
@@ -303,7 +453,7 @@ export default function PropostaAjustada({
             <tfoot>
               <tr className="bg-zinc-100 font-semibold">
                 <td className="border border-zinc-300 p-1.5 print:hidden" />
-                <td colSpan={6} className="border border-zinc-300 p-1.5 text-right">
+                <td colSpan={6 + colunasExtras.length} className="border border-zinc-300 p-1.5 text-right">
                   Valor global da proposta
                 </td>
                 <td className="num border border-zinc-300 p-1.5 text-right">{brl(total)}</td>
@@ -326,9 +476,33 @@ export default function PropostaAjustada({
         </section>
 
         <p className="pt-5 print:pt-3">{DECLARACAO}</p>
+        {declaracoes.some((x) => x.incluir) && (
+          <div className="space-y-1 pt-3 print:pt-2">
+            <p>Declaramos ainda, conforme exigido no edital:</p>
+            <ol className="list-decimal space-y-1 pl-6">
+              {declaracoes.map((x, k) => (
+                <li key={k} className={cn("pl-1", !x.incluir && "list-none text-zinc-400 print:hidden")}>
+                  <span className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      aria-label={`Incluir declaração ${k + 1}`}
+                      checked={x.incluir}
+                      onChange={(e) => setDeclaracoes((xs) => xs.map((y, n) => (n === k ? { ...y, incluir: e.target.checked } : y)))}
+                      className="mt-1 accent-violet-600 print:hidden"
+                    />
+                    <Linha
+                      value={x.texto}
+                      onChange={(e) => setDeclaracoes((xs) => xs.map((y, n) => (n === k ? { ...y, texto: e.target.value } : y)))}
+                    />
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
 
         <footer className="space-y-10 pt-8 [break-inside:avoid] print:space-y-8 print:pt-5">
-          <p className="flex flex-wrap items-baseline gap-1">
+          <p className="flex flex-wrap items-baseline gap-1 print:block">
             <Linha className="w-48" placeholder="Cidade/UF" {...campo("cidade")} />, <Linha className="w-56" {...campo("data")} />.
           </p>
           <div className="mx-auto w-80 max-w-full space-y-0.5 border-t border-zinc-500 pt-1 text-center">

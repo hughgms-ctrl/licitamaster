@@ -68,19 +68,14 @@ export async function enviarAoCliente(disputaId: string): Promise<Saida> {
     return { ok: false, mensagem: "O prazo de proposta desta licitação já fechou." };
   }
 
-  // O cliente decide com o edital lido: o portal mostra a ele o que vão
-  // exigir (documentos, atestados, prazo). Sem a ficha, ele aprovaria às cegas.
+  // Com a análise profunda feita, o portal mostra ao cliente o que vão exigir
+  // (documentos, atestados, prazo). Sem ela, envia assim mesmo: a mesa avisa
+  // antes, e o operador decide.
   const { data: fichaRow } = await db()
     .from("fichas_edital")
     .select("ficha")
     .eq("licitacao_id", d.licitacao_id)
     .maybeSingle<Pick<FichaRow, "ficha">>();
-  if (!fichaRow) {
-    return {
-      ok: false,
-      mensagem: "Leia o edital antes de enviar. O cliente precisa ver o que vão exigir dele para decidir.",
-    };
-  }
 
   const erro = await moverDisputa({
     disputaId,
@@ -102,7 +97,7 @@ export async function enviarAoCliente(disputaId: string): Promise<Saida> {
     ? await convidarCliente({
         whatsapp: cliente.whatsapp,
         contato: cliente.contato_nome,
-        objeto: fichaRow.ficha.resumo_cliente || d.analise_ia?.resumo_cliente || d.licitacao.objeto || "",
+        objeto: fichaRow?.ficha.resumo_cliente || d.analise_ia?.resumo_cliente || d.licitacao.objeto || "",
         orgao: d.licitacao.orgao_razao_social,
         valor: d.licitacao.valor_estimado,
         encerramento: encerra,

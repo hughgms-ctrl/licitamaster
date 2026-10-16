@@ -4,6 +4,8 @@ import { checklistHabilitacao, type DocumentoResumo, type ItemChecklist } from "
 import { dataDaSessao, type FichaRow } from "@/lib/ficha";
 import { formatarData, formatarValor } from "@/lib/formato";
 import { FileText } from "lucide-react";
+import type React from "react";
+import { cn } from "@/lib/utils";
 import { Aviso } from "./ui/aviso";
 import { StatusDot, type Tom } from "./ui/status-dot";
 
@@ -111,70 +113,58 @@ export default function FichaEdital({
         )}
       </section>
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <Lista titulo="Qualificação técnica" itens={f.exigencias_tecnicas} />
-        <Lista titulo="Qualificação econômica" itens={f.qualificacao_economica} />
-        <Lista
-          titulo="Visita, amostra e garantia"
-          itens={[
-            f.visita_tecnica && `Visita técnica: ${f.visita_tecnica}`,
-            f.amostra && `Amostra: ${f.amostra}`,
-            f.garantia && `Garantia: ${f.garantia}`,
-          ].filter((x): x is string => !!x)}
-        />
-        <Lista titulo="Riscos" itens={f.riscos} />
-      </div>
+      <Quadro titulo="Qualificação técnica" itens={f.exigencias_tecnicas} />
+      <Quadro titulo="Qualificação econômico-financeira" itens={f.qualificacao_economica} />
+      <Quadro titulo="Visita técnica" itens={f.visita_tecnica ? [f.visita_tecnica] : []} />
+      <Quadro titulo="Amostra" itens={f.amostra ? [f.amostra] : []} />
+      <Quadro titulo="Garantia" itens={f.garantia ? [f.garantia] : []} />
+      <Quadro titulo="Riscos" tom="alerta" itens={f.riscos} />
 
       {f.clausulas_restritivas.length > 0 && (
-        <section className="space-y-2">
-          <h4 className="text-sm font-semibold">Cláusulas que podem ser impugnadas</h4>
-          <ul className="space-y-2">
-            {f.clausulas_restritivas.map((c, i) => (
-              <li key={i} className="rounded-md border-l-2 border-warning/60 bg-warning/5 py-1.5 pl-3 pr-2">
-                <p className="font-medium">
-                  {c.clausula} {c.referencia && <span className="font-normal text-muted-foreground">({c.referencia})</span>}
-                </p>
-                <p className="leading-relaxed text-muted-foreground">{c.por_que}</p>
-              </li>
-            ))}
-          </ul>
-          {f.prazos.impugnacao && <p className="text-xs text-muted-foreground">Prazo para impugnar: {f.prazos.impugnacao}.</p>}
-        </section>
+        <Quadro
+          titulo="Cláusulas que podem ser impugnadas"
+          tom="alerta"
+          rodape={f.prazos.impugnacao ? `Prazo para impugnar: ${f.prazos.impugnacao}.` : undefined}
+          itens={f.clausulas_restritivas.map((c, i) => (
+            <span key={i} className="block space-y-0.5">
+              <span className="block font-medium">
+                {c.clausula} {c.referencia && <span className="font-normal text-muted-foreground">({c.referencia})</span>}
+              </span>
+              <span className="block text-muted-foreground">{c.por_que}</span>
+            </span>
+          ))}
+        />
       )}
 
-      {f.proposta && (f.proposta.colunas.length > 0 || f.proposta.declaracoes.length > 0 || f.proposta.observacoes.length > 0) && (
-        <div className="grid gap-5 md:grid-cols-2">
-          <Lista
+      {f.proposta && (
+        <>
+          <Quadro
             titulo="Na proposta de preços"
             itens={[
               ...(f.proposta.colunas.length ? [`Colunas pedidas: ${f.proposta.colunas.join(", ")}`] : []),
               ...f.proposta.observacoes,
             ]}
           />
-          <Lista titulo="Declarações que vão na proposta" itens={f.proposta.declaracoes} />
-        </div>
+          <Quadro titulo="Declarações que vão na proposta" itens={f.proposta.declaracoes} />
+        </>
       )}
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <Lista titulo="Perguntas para o pregoeiro" itens={f.perguntas_esclarecimento} />
-        <Lista titulo="Penalidades" itens={f.penalidades} />
-      </div>
+      <Quadro titulo="Perguntas para o pregoeiro" itens={f.perguntas_esclarecimento} />
+      <Quadro titulo="Penalidades" itens={f.penalidades} />
 
       {f.itens.length > 0 && (
-        <section className="space-y-2">
-          <h4 className="text-sm font-semibold">Itens</h4>
-          <ul className="divide-y overflow-hidden rounded-md border bg-card">
-            {f.itens.map((it, i) => (
-              <li key={i} className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:items-baseline sm:gap-3">
-                <span className="min-w-0 flex-1">{it.descricao}</span>
-                {it.quantidade && <span className="text-xs text-muted-foreground">{it.quantidade}</span>}
-                {it.valor_estimado != null && (
-                  <span className="num shrink-0 font-medium">{formatarValor(it.valor_estimado)}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <Quadro
+          titulo="Itens"
+          itens={f.itens.map((it, i) => (
+            <span key={i} className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
+              <span className="min-w-0 flex-1">{it.descricao}</span>
+              {it.quantidade && <span className="text-xs text-muted-foreground">{it.quantidade}</span>}
+              {it.valor_estimado != null && (
+                <span className="num shrink-0 font-medium">{formatarValor(it.valor_estimado)}</span>
+              )}
+            </span>
+          ))}
+        />
       )}
 
       <p className="border-t pt-3 text-xs text-muted-foreground">
@@ -204,16 +194,48 @@ function Fato({ rotulo, valor, link }: { rotulo: string; valor: string | null | 
   );
 }
 
-function Lista({ titulo, itens }: { titulo: string; itens: string[] }) {
+/**
+ * Um bloco da ficha: quadro com borda e faixa de título, um ponto por linha.
+ * Ocupa a largura toda para ler de cima a baixo, inclusive no papel.
+ */
+function Quadro({
+  titulo,
+  itens,
+  tom = "neutro",
+  rodape,
+}: {
+  titulo: string;
+  itens: React.ReactNode[];
+  tom?: "neutro" | "alerta";
+  rodape?: string;
+}) {
   if (!itens?.length) return null;
+  const alerta = tom === "alerta";
   return (
-    <section className="space-y-1.5">
-      <h4 className="text-sm font-semibold">{titulo}</h4>
-      <ul className="list-disc space-y-1 pl-4 leading-relaxed marker:text-muted-foreground/60">
+    <section
+      className={cn(
+        "overflow-hidden rounded-md border border-l-4 bg-card [print-color-adjust:exact]",
+        alerta ? "border-l-warning" : "border-l-primary/70",
+      )}
+    >
+      <h4
+        className={cn(
+          "flex items-center justify-between gap-2 border-b px-3 py-2 text-sm font-semibold [break-after:avoid]",
+          alerta ? "bg-warning/10" : "bg-muted/60",
+        )}
+      >
+        {titulo}
+        {itens.length > 1 && <span className="num text-xs font-normal text-muted-foreground">{itens.length}</span>}
+      </h4>
+      <ol className="divide-y">
         {itens.map((x, i) => (
-          <li key={i}>{x}</li>
+          <li key={i} className="flex gap-3 px-3 py-2 leading-relaxed break-inside-avoid">
+            {itens.length > 1 && <span className="num w-5 shrink-0 text-right text-xs leading-6 text-muted-foreground">{i + 1}.</span>}
+            <span className="min-w-0 flex-1">{x}</span>
+          </li>
         ))}
-      </ul>
+      </ol>
+      {rodape && <p className="border-t px-3 py-2 text-xs text-muted-foreground">{rodape}</p>}
     </section>
   );
 }

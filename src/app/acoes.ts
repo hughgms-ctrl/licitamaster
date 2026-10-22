@@ -13,6 +13,8 @@ import { consultarResultado, gravarResultado } from "@/lib/resultados-pncp";
 import type { AnalisePreco } from "@/lib/preco";
 import { analisarMercado, carregarReferencias } from "@/lib/referencias";
 import { convidarCliente, convidarClienteVarias } from "@/lib/notify";
+import { linhaLicitacao } from "@/lib/coleta";
+import type { ContratacaoPNCP } from "@/lib/pncp";
 import { moverDisputa, registrarEvento, TRANSICOES_OPERADOR, urlPortal } from "@/lib/disputas";
 
 export interface Saida {
@@ -435,4 +437,59 @@ export async function salvarPrecoMinimo(disputaId: string, valor: number | null)
   if (error) return { ok: false, mensagem: error.message };
   revalidatePath("/");
   return { ok: true, mensagem: valor == null ? "Preço mínimo apagado." : "Preço mínimo salvo." };
+}
+
+/**
+ * Traz para a triagem uma licitação da lista "quase entraram": grava a
+ * licitação (se ainda não existe) e a sugestão para este cliente.
+ */
+export async function trazerParaTriagem(numeroControle: string, clienteId: string): Promise<Saida & { disputaId?: string }> {
+  await exigirOperador();
+  const supabase = db();
+  const { data: q } = await supabase
+    .from("quase_entraram")
+    .select("perfil_id, score, termos, motivo, raw")
+    .eq("numero_controle_pncp", numeroControle)
+    .eq("cliente_id", clienteId)
+    .maybeSingle();
+  if (!q) return { ok: false, mensagem: "Não está mais na lista. Recarregue a página." };
+
+  const c = q.raw as ContratacaoPNCP;
+  const { data: existe } = await supabase.from("licitacoes").select("numero_controle_pncp").eq("numero_controle_pncp", numeroControle).maybeSingle();
+  if (!existe) {
+    const { error } = await supabase.from("licitacoes").insert(linhaLicitacao(c, c.modalidadeId ?? 6));
+    if (error) return { ok: false, mensagem: error.message };
+  }
+  const { data: disp, error: erroDisp } = await supabase
+    .from("disputas")
+    .upsert(
+      {
+        licitacao_id: numeroControle,
+        cliente_id: clienteId,
+        perfil_id: q.perfil_id,
+        score: q.score,
+        termos_encontrados: q.termos ?? [],
+      },
+      { onConflict: "licitacao_id,cliente_id", ignoreDuplicates: true }
+    )
+    .select("id")
+    .maybeSingle();
+  if (erroDisp) return { ok: false, mensagem: erroDisp.message };
+
+  await supabase.from("quase_entraram").delete().eq("numero_controle_pncp", numeroControle).eq("cliente_id", clienteId);
+  if (disp?.id) {
+    await registrarEvento({
+      disputa_id: disp.id as string,
+      cliente_id: clienteId,
+      ator: "operador",
+      tipo: "trazida_para_triagem",
+      dados: { motivo_fora: q.motivo },
+    });
+  }
+  revalidatePath("/");
+  return {
+    ok: true,
+    mensagem: disp?.id ? "Está na triagem." : "Este cliente já tinha esta licitação na mesa.",
+    disputaId: (disp?.id as string | undefined) ?? undefined,
+  };
 }

@@ -13,6 +13,7 @@ import type { Preparo } from "@/lib/preparo";
 import { ptLink, ptPedirUpload, ptRegistrar } from "./acoes";
 import { analisarMercado, carregarReferencias } from "@/lib/referencias";
 import type { Referencia } from "@/lib/preco";
+import { lotesDaFicha, MAX_LOTES } from "@/lib/lotes";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +108,13 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
     };
   }
 
+  // Licitação dividida em lotes (ou julgada por item): o cliente escolhe quais.
+  function lotesParaEscolha(licitacaoId: string) {
+    const lotes = lotesDaFicha(fichas.get(licitacaoId));
+    if (lotes.length === 0 || lotes.length > MAX_LOTES) return null;
+    return lotes.map(({ chave, rotulo, descricao, quantidade, valor_estimado }) => ({ chave, rotulo, descricao, quantidade, valor_estimado }));
+  }
+
   // Só o que o cliente precisa ver. Score, termos, notas internas e análise
   // técnica ficam do lado de cá.
   const cartoes: CartaoPortal[] = ((data ?? []) as (DisputaRow & { licitacao: LicitacaoRow })[]).map(
@@ -125,6 +133,8 @@ export default async function PortalCliente({ params }: { params: Promise<{ toke
       exigencias:
         d.status === "aguardando_cliente" ? exigenciasDe(d.licitacao_id, d.licitacao.data_encerramento_proposta) : null,
       mercado: d.status === "aguardando_cliente" ? mercadoDe(d.licitacao) : null,
+      lotes: d.status === "aguardando_cliente" ? lotesParaEscolha(d.licitacao_id) : null,
+      lotesEscolhidos: d.lotes ?? null,
     })
   );
 

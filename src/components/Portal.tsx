@@ -36,6 +36,18 @@ export interface CartaoPortal {
   exigencias?: ExigenciasCliente | null;
   /** o que o mercado paga em licitações parecidas (só nas que esperam decisão) */
   mercado?: MercadoCliente | null;
+  /** licitação dividida em lotes: o cliente escolhe de quais participa (só nas que esperam decisão) */
+  lotes?: LotePortal[] | null;
+  /** o que ele escolheu, nas já aprovadas */
+  lotesEscolhidos?: { rotulo: string; preco_minimo: number }[] | null;
+}
+
+export interface LotePortal {
+  chave: string;
+  rotulo: string;
+  descricao: string;
+  quantidade: string | null;
+  valor_estimado: number | null;
 }
 
 export interface MercadoCliente {
@@ -228,6 +240,11 @@ function Resumo({ c }: { c: CartaoPortal }) {
           </span>
         )}
       </div>
+      {c.lotesEscolhidos && c.lotesEscolhidos.length > 0 && (
+        <p className="num text-xs leading-relaxed text-muted-foreground">
+          {c.lotesEscolhidos.map((l) => `${l.rotulo}: ${formatarValor(l.preco_minimo)}`).join(" · ")}
+        </p>
+      )}
     </article>
   );
 }
@@ -257,8 +274,16 @@ function Decisao({
   const [confirmo, setConfirmo] = useState(false);
   const [saida, setSaida] = useState<SaidaPortal | null>(null);
   const [pendente, iniciar] = useTransition();
+  // Com lotes: quais ele quer e o mínimo de cada um. O total vira o preço mínimo.
+  const [escolha, setEscolha] = useState<Record<string, { participa: boolean; preco: string }>>({});
+  const comLotes = !!c.lotes?.length;
+  const lotesEscolhidos = (c.lotes ?? [])
+    .filter((l) => escolha[l.chave]?.participa)
+    .map((l) => ({ chave: l.chave, preco_minimo: lerReais(escolha[l.chave]?.preco ?? "") }));
+  const lotesProntos = lotesEscolhidos.length > 0 && lotesEscolhidos.every((l) => l.preco_minimo != null);
+  const totalLotes = lotesProntos ? lotesEscolhidos.reduce((s, l) => s + l.preco_minimo!, 0) : null;
 
-  const valorPreco = lerReais(preco);
+  const valorPreco = comLotes ? totalLotes : lerReais(preco);
   const pctEstimado =
     valorPreco && c.valorEstimado && c.valorEstimado > 0
       ? Math.round((valorPreco / c.valorEstimado) * 100)
@@ -315,45 +340,61 @@ function Decisao({
 
       {modo === "sim" && (
         <div className="space-y-4 border-t pt-4">
-          <Campo
-            rotulo="Seu preço mínimo (R$)"
-            dica="O menor valor total que ainda dá lucro. Nunca oferecemos menos que isso."
-          >
-            <Input
-              className="num h-12 text-lg font-semibold"
-              inputMode="decimal"
-              placeholder="ex: 48.500,00"
-              value={preco}
-              onChange={(e) => setPreco(e.target.value)}
-              autoFocus
-            />
-          </Campo>
-          {c.mercado && c.mercado.razoes.length >= 3 && valorPreco ? (
-            <ChanceGanhar chance={chanceDeGanhar(valorPreco, c.valorEstimado, c.mercado.razoes)} rotulo="Sua chance com esse mínimo" />
-          ) : (
-            pctEstimado != null && <Medidor pct={pctEstimado} />
-          )}
-          {calcular ? (
-            <CalculadoraPreco
-              className="rounded-md border p-3"
-              estimado={c.valorEstimado}
+          {comLotes ? (
+            <EscolhaLotes
+              lotes={c.lotes!}
+              escolha={escolha}
+              mudar={(chave, campos) =>
+                setEscolha((e) => ({ ...e, [chave]: { ...(e[chave] ?? { participa: false, preco: "" }), ...campos } }))
+              }
+              razoes={c.mercado && c.mercado.razoes.length >= 3 ? c.mercado.razoes : null}
               assessoriaPct={assessoriaPct}
               lucroPct={lucroPct}
-              rotuloUsar="Usar este valor"
-              usar={(v) => {
-                setPreco(v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-                setCalcular(false);
-              }}
+              total={totalLotes}
             />
           ) : (
-            <button
-              type="button"
-              onClick={() => setCalcular(true)}
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline dark:text-sidebar-primary"
-            >
-              <Calculator className="size-4" />
-              Não sabe o valor? Calcule a partir do seu custo
-            </button>
+            <>
+              <Campo
+                rotulo="Seu preço mínimo (R$)"
+                dica="O menor valor total que ainda dá lucro. Nunca oferecemos menos que isso."
+              >
+                <Input
+                  className="num h-12 text-lg font-semibold"
+                  inputMode="decimal"
+                  placeholder="ex: 48.500,00"
+                  value={preco}
+                  onChange={(e) => setPreco(e.target.value)}
+                  autoFocus
+                />
+              </Campo>
+              {c.mercado && c.mercado.razoes.length >= 3 && valorPreco ? (
+                <ChanceGanhar chance={chanceDeGanhar(valorPreco, c.valorEstimado, c.mercado.razoes)} rotulo="Sua chance com esse mínimo" />
+              ) : (
+                pctEstimado != null && <Medidor pct={pctEstimado} />
+              )}
+              {calcular ? (
+                <CalculadoraPreco
+                  className="rounded-md border p-3"
+                  estimado={c.valorEstimado}
+                  assessoriaPct={assessoriaPct}
+                  lucroPct={lucroPct}
+                  rotuloUsar="Usar este valor"
+                  usar={(v) => {
+                    setPreco(v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                    setCalcular(false);
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setCalcular(true)}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline dark:text-sidebar-primary"
+                >
+                  <Calculator className="size-4" />
+                  Não sabe o valor? Calcule a partir do seu custo
+                </button>
+              )}
+            </>
           )}
           <Campo rotulo="Observações (opcional)">
             <Textarea
@@ -372,7 +413,15 @@ function Decisao({
               size="lg"
               className="h-12"
               disabled={pendente || !valorPreco || !confirmo}
-              onClick={() => enviar({ decisao: "sim", precoMinimo: valorPreco!, notas, confirmo })}
+              onClick={() =>
+                enviar({
+                  decisao: "sim",
+                  precoMinimo: valorPreco!,
+                  notas,
+                  confirmo,
+                  ...(comLotes ? { lotes: lotesEscolhidos.map((l) => ({ chave: l.chave, preco_minimo: l.preco_minimo! })) } : {}),
+                })
+              }
             >
               {pendente && <Loader2 className="animate-spin" />}
               {pendente ? "Enviando…" : "Aprovar participação"}
@@ -426,6 +475,112 @@ function Decisao({
         </a>
       )}
     </article>
+  );
+}
+
+/**
+ * Licitação em lotes: um cartão por lote, com "participar" e o mínimo. A
+ * chance de ganhar e a calculadora usam o estimado do próprio lote.
+ */
+function EscolhaLotes({
+  lotes,
+  escolha,
+  mudar,
+  razoes,
+  assessoriaPct,
+  lucroPct,
+  total,
+}: {
+  lotes: LotePortal[];
+  escolha: Record<string, { participa: boolean; preco: string }>;
+  mudar: (chave: string, campos: Partial<{ participa: boolean; preco: string }>) => void;
+  razoes: number[] | null;
+  assessoriaPct?: number | null;
+  lucroPct?: number | null;
+  total: number | null;
+}) {
+  const [calculando, setCalculando] = useState<string | null>(null);
+  const marcados = lotes.filter((l) => escolha[l.chave]?.participa).length;
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Esta licitação tem {lotes.length} partes disputadas separadas</p>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Marque só as que a sua empresa consegue entregar e dê o menor valor que ainda dá lucro em cada uma. Pode ganhar
+          umas e não outras.
+        </p>
+      </div>
+      <ul className="space-y-2">
+        {lotes.map((l) => {
+          const e = escolha[l.chave] ?? { participa: false, preco: "" };
+          const v = lerReais(e.preco);
+          return (
+            <li
+              key={l.chave}
+              className={cn("space-y-3 rounded-md border p-3 transition-colors", e.participa && "border-primary/50 bg-primary/5")}
+            >
+              <label className="flex cursor-pointer items-start gap-3">
+                <Checkbox checked={e.participa} onCheckedChange={(x) => mudar(l.chave, { participa: x === true })} className="mt-0.5 size-5" />
+                <span className="min-w-0 flex-1 space-y-0.5">
+                  <span className="block text-sm font-medium">{l.rotulo}</span>
+                  <span className="block text-sm leading-snug text-muted-foreground">{l.descricao}</span>
+                  <span className="num block text-xs text-muted-foreground">
+                    {[l.quantidade, l.valor_estimado ? `estimado ${formatarValor(l.valor_estimado)}` : null].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+              </label>
+              {e.participa && (
+                <div className="space-y-2 pl-8">
+                  <Input
+                    className="num h-11 font-semibold"
+                    inputMode="decimal"
+                    aria-label={`Preço mínimo do ${l.rotulo}`}
+                    placeholder="Seu mínimo, ex: 12.500,00"
+                    value={e.preco}
+                    onChange={(ev) => mudar(l.chave, { preco: ev.target.value })}
+                  />
+                  {v && l.valor_estimado && razoes ? (
+                    <ChanceGanhar chance={chanceDeGanhar(v, l.valor_estimado, razoes)} rotulo="Chance neste lote" />
+                  ) : v && l.valor_estimado ? (
+                    <p className="num text-xs text-muted-foreground">
+                      {Math.round((v / l.valor_estimado) * 100)}% do estimado deste lote
+                    </p>
+                  ) : null}
+                  {calculando === l.chave ? (
+                    <CalculadoraPreco
+                      className="rounded-md border bg-card p-3"
+                      estimado={l.valor_estimado}
+                      assessoriaPct={assessoriaPct}
+                      lucroPct={lucroPct}
+                      rotuloUsar="Usar este valor"
+                      usar={(x) => {
+                        mudar(l.chave, { preco: x.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) });
+                        setCalculando(null);
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setCalculando(l.chave)}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline dark:text-sidebar-primary"
+                    >
+                      <Calculator className="size-3.5" />
+                      Calcular a partir do custo
+                    </button>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="flex items-center justify-between rounded-md bg-muted/60 px-3 py-2 text-sm">
+        <span className="text-muted-foreground">
+          {marcados === 0 ? "Nenhuma parte marcada" : `${marcados} de ${lotes.length} marcadas · mínimo total`}
+        </span>
+        <b className="num font-semibold">{total != null ? formatarValor(total) : "—"}</b>
+      </p>
+    </div>
   );
 }
 

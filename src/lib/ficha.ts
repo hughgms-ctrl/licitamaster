@@ -5,8 +5,15 @@ export interface FichaEdital {
   resumo: string;
   /** para o cliente: linguagem de dono de empresa */
   resumo_cliente: string;
-  /** quantidade: "600 horas"; valor_estimado: valor TOTAL do item (fichas antigas podem ser ambíguas) */
-  itens: { descricao: string; quantidade: string | null; valor_estimado: number | null }[];
+  /** quantidade: "600 horas"; valor_estimado: valor TOTAL do item (fichas antigas podem ser ambíguas);
+   *  numero e lote como o edital numera (fichas antigas não têm) */
+  itens: {
+    descricao: string;
+    quantidade: string | null;
+    valor_estimado: number | null;
+    numero?: string | null;
+    lote?: string | null;
+  }[];
   sessao: {
     data_hora: string | null;
     plataforma: string | null;

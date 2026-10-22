@@ -501,7 +501,10 @@ function Item({
           {d.preco_minimo != null && (
             <>
               {" · "}
-              <span className="text-foreground">mínimo do cliente {formatarValor(d.preco_minimo)}</span>
+              <span className="text-foreground">
+                mínimo do cliente {formatarValor(d.preco_minimo)}
+                {d.lotes?.length ? ` em ${d.lotes.length} ${d.lotes.length === 1 ? "lote" : "lotes"}` : ""}
+              </span>
             </>
           )}
         </p>

@@ -115,7 +115,7 @@ export default function EnvioEmLote({
 
           {(naoVale > 0 || semEdital > 0 || semAnalise > 0) && (
             <ul className="space-y-1 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-              {naoVale > 0 && <li>{naoVale} a IA disse que não vale a pena.</li>}
+              {naoVale > 0 && <li>{naoVale} com veredito da IA “não vale a pena”.</li>}
               {semAnalise > 0 && <li>{semAnalise} sem análise rápida.</li>}
               {semEdital > 0 && <li>{semEdital} sem o edital lido: o cliente não vê as exigências no portal.</li>}
             </ul>

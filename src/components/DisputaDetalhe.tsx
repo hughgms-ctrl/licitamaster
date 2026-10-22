@@ -211,6 +211,21 @@ export default function DisputaDetalhe({
           </Fato>
         </dl>
 
+        {d.lotes && d.lotes.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground">
+              O cliente escolheu {d.lotes.length} {d.lotes.length === 1 ? "lote" : "lotes"}. Só dispute estes:
+            </p>
+            <ul className="flex flex-wrap gap-2 text-sm">
+              {d.lotes.map((x) => (
+                <li key={x.chave} className="rounded-md border bg-muted/40 px-2.5 py-1" title={x.descricao}>
+                  <span className="font-medium">{x.rotulo}</span>
+                  <span className="num text-muted-foreground"> · mínimo {formatarValor(x.preco_minimo)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {d.notas_cliente && (
           <p className="text-sm italic text-muted-foreground">Cliente: “{d.notas_cliente}”</p>
         )}

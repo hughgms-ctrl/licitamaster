@@ -16,6 +16,9 @@ export interface ItemProposta {
   marca: string;
   /** colunas a mais que o modelo de proposta do edital pede (ex: "prazo de garantia") */
   extras?: Record<string, string>;
+  /** número do item no edital e lote a que pertence (src/lib/lotes.ts), quando a ficha traz */
+  numero?: string | null;
+  lote?: { chave: string; rotulo: string } | null;
 }
 
 /** Declaração geral que vai em toda proposta ajustada. */
@@ -141,4 +144,24 @@ export function porExtenso(valor: number): string {
   }
   if (cents) partes.push(`${ate999(cents)} ${cents === 1 ? "centavo" : "centavos"}`);
   return partes.length ? partes.join(" e ") : "zero real";
+}
+
+/**
+ * Lance final de cada lote: distribui cada um entre os itens do próprio lote.
+ * Itens de lotes sem lance ficam como estão.
+ */
+export function distribuirPorLote(
+  itens: ItemProposta[],
+  lances: Record<string, number>
+): { itens: ItemProposta[]; sobra: number } {
+  let atual = itens;
+  let sobra = 0;
+  for (const [chave, lance] of Object.entries(lances)) {
+    if (!(lance > 0)) continue;
+    const doLote = atual.map((i) => ({ ...i, incluir: i.incluir && i.lote?.chave === chave }));
+    const r = distribuir(doLote, lance);
+    atual = atual.map((i, k) => (i.lote?.chave === chave && i.incluir ? { ...i, unitario: r.itens[k].unitario } : i));
+    sobra += r.sobra;
+  }
+  return { itens: atual, sobra: Math.round(sobra * 100) / 100 };
 }

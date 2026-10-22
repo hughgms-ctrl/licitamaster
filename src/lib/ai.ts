@@ -382,7 +382,7 @@ Responda SOMENTE com JSON válido, sem markdown, neste formato:
 {
   "resumo": "...",
   "resumo_cliente": "...",
-  "itens": [{"descricao": "...", "quantidade": "600 horas" | null, "valor_estimado": 1234.56 | null}],
+  "itens": [{"numero": "1", "lote": "1" | null, "descricao": "...", "quantidade": "600 horas" | null, "valor_estimado": 1234.56 | null}],
   "sessao": {"data_hora": "...", "plataforma": "Compras.gov.br | BLL | Portal de Compras Públicas | ...", "link": "...", "modo_disputa": "aberto | aberto e fechado | ...", "criterio_julgamento": "menor preço por item | ..."},
   "exclusiva_me_epp": "sim" | "nao" | "parcial" | "nao_informado",
   "prazos": {"impugnacao": "...", "esclarecimentos": "...", "entrega_execucao": "...", "vigencia": "...", "pagamento": "...", "validade_proposta": "..."},
@@ -401,7 +401,9 @@ Responda SOMENTE com JSON válido, sem markdown, neste formato:
 
 Em "itens", siga a ordem e a numeração do edital. "quantidade" começa pelo número seguido da unidade
 ("600 horas", "12 meses", "1.200 unidades"). "valor_estimado" é o valor TOTAL estimado do item
-(quantidade × valor unitário), não o unitário. Liste até 60 itens; se houver mais, os 60 primeiros.`;
+(quantidade × valor unitário), não o unitário. "numero" é o número do item no edital. "lote" é o número do
+lote/grupo a que o item pertence quando o edital agrupa itens em lotes; null quando não há lotes.
+Liste até 60 itens; se houver mais, os 60 primeiros.`;
 
   const texto = await chamarIA({
     prompt,
@@ -417,7 +419,13 @@ Em "itens", siga a ordem e a numeração do edital. "quantidade" começa pelo n�
   return {
     resumo: f.resumo ?? "",
     resumo_cliente: f.resumo_cliente ?? f.resumo ?? "",
-    itens: Array.isArray(f.itens) ? f.itens.slice(0, 60) : [],
+    itens: Array.isArray(f.itens)
+      ? f.itens.slice(0, 60).map((i) => ({
+          ...i,
+          numero: i.numero != null ? String(i.numero) : null,
+          lote: i.lote != null && String(i.lote).trim() ? String(i.lote) : null,
+        }))
+      : [],
     sessao: {
       data_hora: f.sessao?.data_hora ?? null,
       plataforma: f.sessao?.plataforma ?? null,

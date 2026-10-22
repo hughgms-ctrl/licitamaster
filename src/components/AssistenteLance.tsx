@@ -6,6 +6,7 @@ import { lerReais } from "@/lib/resultado";
 import { brl } from "@/lib/proposta";
 import { cn } from "@/lib/utils";
 import { Input } from "./ui/input";
+import { NativeSelect } from "./ui/native-select";
 import { Aviso } from "./ui/aviso";
 
 const PASSOS = [0.003, 0.005, 0.01, 0.02];
@@ -15,7 +16,20 @@ const PASSOS = [0.003, 0.005, 0.01, 0.02];
  * lance da sala e ela mostra os próximos lances possíveis, quanto falta até o
  * piso do cliente e quando parar. Não dá lance nenhum: quem decide é você.
  */
-export default function AssistenteLance({ piso, estimado }: { piso: number | null; estimado: number | null }) {
+export default function AssistenteLance({
+  piso: pisoTotal,
+  estimado: estimadoTotal,
+  lotes,
+}: {
+  piso: number | null;
+  estimado: number | null;
+  /** com lotes, cada um tem o seu piso: a calculadora trabalha no lote escolhido */
+  lotes?: { chave: string; rotulo: string; valor_estimado: number | null; preco_minimo: number }[] | null;
+}) {
+  const [loteAtual, setLoteAtual] = useState(lotes?.[0]?.chave ?? "");
+  const lote = lotes?.find((x) => x.chave === loteAtual);
+  const piso = lote ? lote.preco_minimo : pisoTotal;
+  const estimado = lote ? lote.valor_estimado : estimadoTotal;
   const [melhor, setMelhor] = useState("");
   const [nosso, setNosso] = useState("");
   const m = lerReais(melhor);
@@ -37,6 +51,25 @@ export default function AssistenteLance({ piso, estimado }: { piso: number | nul
         <Calculator className="size-4 text-muted-foreground" />
         Calculadora de lance
       </span>
+      {lotes && lotes.length > 1 && (
+        <label className="block space-y-1 text-xs text-muted-foreground">
+          <span>Lote em disputa agora</span>
+          <NativeSelect
+            value={loteAtual}
+            onChange={(e) => {
+              setLoteAtual(e.target.value);
+              setMelhor("");
+              setNosso("");
+            }}
+          >
+            {lotes.map((x) => (
+              <option key={x.chave} value={x.chave}>
+                {x.rotulo}: piso {brl(x.preco_minimo)}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
+      )}
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="space-y-1 text-xs text-muted-foreground">
           <span>Melhor lance da sala agora</span>

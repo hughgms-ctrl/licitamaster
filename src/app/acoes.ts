@@ -12,7 +12,7 @@ import type { ContratoDisputa } from "@/lib/contrato";
 import { consultarResultado, gravarResultado } from "@/lib/resultados-pncp";
 import type { AnalisePreco } from "@/lib/preco";
 import { analisarMercado, carregarReferencias } from "@/lib/referencias";
-import { convidarCliente } from "@/lib/notify";
+import { convidarCliente, convidarClienteVarias } from "@/lib/notify";
 import { moverDisputa, registrarEvento, TRANSICOES_OPERADOR, urlPortal } from "@/lib/disputas";
 
 export interface Saida {
@@ -54,19 +54,36 @@ export async function mudarStatus(disputaId: string, para: StatusDisputa): Promi
   return { ok: true, mensagem: "Atualizado." };
 }
 
+/** Muda a etapa para "com o cliente" (o que já trava a licitação para os outros). */
+async function marcarEnviada(d: DisputaCompleta): Promise<string | null> {
+  const encerra = d.licitacao.data_encerramento_proposta;
+  if (encerra && new Date(encerra).getTime() < Date.now()) return "O prazo de proposta desta licitação já fechou.";
+  return moverDisputa({
+    disputaId: d.id,
+    de: ["sugerida", "recusada"],
+    para: "aguardando_cliente",
+    ator: "operador",
+    tipo: "enviada_ao_cliente",
+  });
+}
+
+async function contatoCliente(clienteId: string) {
+  const { data } = await db()
+    .from("clientes")
+    .select("whatsapp, contato_nome, token_portal")
+    .eq("id", clienteId)
+    .single<Pick<ClienteRow, "whatsapp" | "contato_nome" | "token_portal">>();
+  return data;
+}
+
 /**
- * Manda a licitação para o cliente decidir: muda a etapa (o que já trava a
- * licitação para os outros clientes) e avisa no WhatsApp com o link do portal.
+ * Manda a licitação para o cliente decidir: muda a etapa e avisa no WhatsApp
+ * com o link do portal.
  */
 export async function enviarAoCliente(disputaId: string): Promise<Saida> {
   await exigirOperador();
   const d = await carregar(disputaId);
   if (!d) return { ok: false, mensagem: "Disputa não encontrada." };
-
-  const encerra = d.licitacao.data_encerramento_proposta;
-  if (encerra && new Date(encerra).getTime() < Date.now()) {
-    return { ok: false, mensagem: "O prazo de proposta desta licitação já fechou." };
-  }
 
   // Com a análise profunda feita, o portal mostra ao cliente o que vão exigir
   // (documentos, atestados, prazo). Sem ela, envia assim mesmo: a mesa avisa
@@ -77,21 +94,10 @@ export async function enviarAoCliente(disputaId: string): Promise<Saida> {
     .eq("licitacao_id", d.licitacao_id)
     .maybeSingle<Pick<FichaRow, "ficha">>();
 
-  const erro = await moverDisputa({
-    disputaId,
-    de: ["sugerida", "recusada"],
-    para: "aguardando_cliente",
-    ator: "operador",
-    tipo: "enviada_ao_cliente",
-  });
+  const erro = await marcarEnviada(d);
   if (erro) return { ok: false, mensagem: erro };
 
-  const { data: cliente } = await db()
-    .from("clientes")
-    .select("whatsapp, contato_nome, token_portal")
-    .eq("id", d.cliente_id)
-    .single<Pick<ClienteRow, "whatsapp" | "contato_nome" | "token_portal">>();
-
+  const cliente = await contatoCliente(d.cliente_id);
   const link = cliente ? urlPortal(cliente.token_portal) : undefined;
   const enviou = cliente
     ? await convidarCliente({
@@ -100,7 +106,7 @@ export async function enviarAoCliente(disputaId: string): Promise<Saida> {
         objeto: fichaRow?.ficha.resumo_cliente || d.analise_ia?.resumo_cliente || d.licitacao.objeto || "",
         orgao: d.licitacao.orgao_razao_social,
         valor: d.licitacao.valor_estimado,
-        encerramento: encerra,
+        encerramento: d.licitacao.data_encerramento_proposta,
         linkPortal: link!,
       })
     : false;
@@ -113,6 +119,70 @@ export async function enviarAoCliente(disputaId: string): Promise<Saida> {
       : "Enviada para o portal, mas o WhatsApp não saiu (cliente sem número ou Evolution não configurada). Mande o link manualmente:",
     link: enviou ? undefined : link,
   };
+}
+
+export interface SaidaLote {
+  enviadas: string[];
+  falhas: { id: string; mensagem: string }[];
+  /** clientes que não receberam o WhatsApp: o link para mandar à mão */
+  semWhatsapp: { cliente: string; link: string }[];
+}
+
+/**
+ * Envio em lote, depois que o operador conferiu a lista. Cada licitação passa
+ * pelas mesmas regras do envio avulso; cada cliente recebe uma mensagem só,
+ * com todas as que são dele.
+ */
+export async function enviarVarias(ids: string[]): Promise<SaidaLote> {
+  await exigirOperador();
+  const saida: SaidaLote = { enviadas: [], falhas: [], semWhatsapp: [] };
+  const porCliente = new Map<string, DisputaCompleta[]>();
+
+  for (const id of ids.slice(0, 100)) {
+    const d = await carregar(id);
+    if (!d) {
+      saida.falhas.push({ id, mensagem: "Disputa não encontrada." });
+      continue;
+    }
+    const erro = await marcarEnviada(d);
+    if (erro) {
+      saida.falhas.push({ id, mensagem: erro });
+      continue;
+    }
+    saida.enviadas.push(id);
+    porCliente.set(d.cliente_id, [...(porCliente.get(d.cliente_id) ?? []), d]);
+  }
+
+  for (const [clienteId, lista] of porCliente) {
+    const cliente = await contatoCliente(clienteId);
+    if (!cliente) continue;
+    const link = urlPortal(cliente.token_portal);
+    const enviou =
+      lista.length === 1
+        ? await convidarCliente({
+            whatsapp: cliente.whatsapp,
+            contato: cliente.contato_nome,
+            objeto: lista[0].analise_ia?.resumo_cliente || lista[0].licitacao.objeto || "",
+            orgao: lista[0].licitacao.orgao_razao_social,
+            valor: lista[0].licitacao.valor_estimado,
+            encerramento: lista[0].licitacao.data_encerramento_proposta,
+            linkPortal: link,
+          })
+        : await convidarClienteVarias({
+            whatsapp: cliente.whatsapp,
+            contato: cliente.contato_nome,
+            licitacoes: lista.map((d) => ({
+              objeto: d.analise_ia?.resumo_cliente || d.licitacao.objeto || "",
+              valor: d.licitacao.valor_estimado,
+              encerramento: d.licitacao.data_encerramento_proposta,
+            })),
+            linkPortal: link,
+          });
+    if (!enviou) saida.semWhatsapp.push({ cliente: lista[0].cliente.nome_fantasia || lista[0].cliente.razao_social, link });
+  }
+
+  revalidatePath("/");
+  return saida;
 }
 
 /** Roda a análise da IA para esta licitação, no contexto deste cliente. */

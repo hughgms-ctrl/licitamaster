@@ -21,6 +21,8 @@ import { StatusDot } from "./ui/status-dot";
 import { StatStrip } from "./ui/stat-strip";
 import { Aviso } from "./ui/aviso";
 import { Vazio } from "./ui/vazio";
+import { Checkbox } from "./ui/checkbox";
+import EnvioEmLote from "./EnvioEmLote";
 
 /**
  * As abas seguem o caminho da disputa. Cada uma é uma pergunta diferente:
@@ -76,6 +78,9 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
   // `agora` congelado no carregamento: recalcular a cada render faria o
   // servidor e o navegador discordarem e o React reclamar de hidratação.
   const [agora] = useState(() => Date.now());
+  // Seleção para o envio em lote (só na triagem).
+  const [selecao, setSelecao] = useState<Set<string>>(new Set());
+  useEffect(() => setSelecao(new Set()), [aba, cliente, uf, cidade]);
 
   // Estado e cidade saem das próprias licitações: só aparece o que existe.
   const ufsDisponiveis = useMemo(
@@ -163,6 +168,28 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
     ? (agora - new Date(ultimaColeta.finalizado_em).getTime()) / 36e5
     : null;
   const coletaParada = horasDesdeColeta == null || horasDesdeColeta > 3;
+
+  const comOutroDe = (d: DisputaCompleta) =>
+    exclusivas[d.licitacao_id] &&
+    !["aguardando_cliente", "aprovada", "em_preparacao", "proposta_enviada", "em_disputa", "ganhou"].includes(d.status)
+      ? exclusivas[d.licitacao_id]
+      : null;
+  // Dá para enviar: está na triagem, ninguém mais está com ela e o prazo não fechou.
+  const enviavel = (d: DisputaCompleta) =>
+    d.status === "sugerida" &&
+    !comOutroDe(d) &&
+    !(d.licitacao.data_encerramento_proposta && new Date(d.licitacao.data_encerramento_proposta).getTime() < agora);
+  const enviaveis = aba === "triagem" ? visiveis.filter(enviavel) : [];
+  const valemAPena = enviaveis.filter((d) => d.analise_ia?.veredito === "vale_a_pena");
+  const selecionadas = visiveis.filter((d) => selecao.has(d.id));
+  function alternar(id: string) {
+    setSelecao((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
 
   const filtrando = busca !== "" || cliente !== "todos" || uf !== "todos" || cidade !== "todas";
 
@@ -303,6 +330,20 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
 
       <p className="mb-3 text-sm text-muted-foreground">{AJUDA_ABA[aba]}</p>
 
+      {enviaveis.length > 1 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Selecionar:</span>
+          {valemAPena.length > 0 && (
+            <Button size="sm" variant="outline" onClick={() => setSelecao(new Set(valemAPena.map((d) => d.id)))}>
+              As que valem a pena ({valemAPena.length})
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" onClick={() => setSelecao(new Set(enviaveis.map((d) => d.id)))}>
+            Todas ({enviaveis.length})
+          </Button>
+        </div>
+      )}
+
       {visiveis.length === 0 ? (
         filtrando ? (
           <Vazio icone={Search} titulo="Nada com esses filtros.">
@@ -337,19 +378,27 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
               key={d.id}
               d={d}
               agora={agora}
-              comOutro={
-                exclusivas[d.licitacao_id] &&
-                !["aguardando_cliente", "aprovada", "em_preparacao", "proposta_enviada", "em_disputa", "ganhou"].includes(d.status)
-                  ? exclusivas[d.licitacao_id]
-                  : null
-              }
+              comOutro={comOutroDe(d)}
               atualizar={atualizar}
+              selecionado={aba === "triagem" && enviavel(d) ? selecao.has(d.id) : undefined}
+              aoSelecionar={() => alternar(d.id)}
               temFicha={!!lidas[d.licitacao_id]}
               temResultado={!!comResultado[d.id]}
             />
           ))}
         </div>
       )}
+
+      <EnvioEmLote
+        selecionadas={selecionadas}
+        lidas={lidas}
+        limpar={() => setSelecao(new Set())}
+        aoEnviar={(ids) => {
+          const enviadas = new Set(ids);
+          setDisputas((xs) => xs.map((d) => (enviadas.has(d.id) ? { ...d, status: "aguardando_cliente" } : d)));
+          setSelecao(new Set());
+        }}
+      />
     </>
   );
 }
@@ -367,6 +416,8 @@ function Item({
   atualizar,
   temFicha,
   temResultado,
+  selecionado,
+  aoSelecionar,
 }: {
   d: DisputaCompleta;
   agora: number;
@@ -375,6 +426,9 @@ function Item({
   atualizar: (id: string, campos: Partial<DisputaCompleta>) => void;
   temFicha: boolean;
   temResultado: boolean;
+  /** undefined: este card não entra no envio em lote */
+  selecionado?: boolean;
+  aoSelecionar: () => void;
 }) {
   const [abrirResumo, setAbrirResumo] = useState(false);
   const a = useAcoesDisputa(d, { temFicha, aoMudar: (c) => atualizar(d.id, c) });
@@ -402,7 +456,20 @@ function Item({
   }
 
   return (
-    <article className="relative flex gap-4 p-4 transition-colors hover:bg-accent/40 sm:p-5">
+    <article
+      className={cn(
+        "relative flex gap-4 p-4 transition-colors hover:bg-accent/40 sm:p-5",
+        selecionado && "bg-primary/5 hover:bg-primary/10"
+      )}
+    >
+      {selecionado !== undefined && (
+        <Checkbox
+          checked={selecionado}
+          onCheckedChange={aoSelecionar}
+          aria-label="Selecionar para enviar em lote"
+          className="relative z-10 mt-1 size-5"
+        />
+      )}
       <Prazo iso={l.data_encerramento_proposta} agora={agora} status={d.status} />
 
       <div className="min-w-0 flex-1 space-y-2">

@@ -45,6 +45,7 @@ export default async function Configuracoes() {
             modeloPadrao={MODELO_PADRAO}
             provedorAtual={atual?.provedor ?? "anthropic"}
             modeloAtual={atual?.modelo ?? null}
+            workspaceAtual={atual?.workspaceId ?? null}
           />
           <div className="flex gap-3 rounded-lg border border-dashed p-4">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-muted-foreground" />

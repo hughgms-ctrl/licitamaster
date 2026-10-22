@@ -3,7 +3,7 @@ import { textoObjetivos } from "./objetivos";
 import type { AnaliseIA, ClienteRow, LicitacaoRow } from "./db";
 import type { AmostraObjeto } from "./amostra";
 import { normalizar, type TermoPositivo } from "./scoring";
-import { lerConfigIA } from "./config-ia";
+import { clienteAnthropic, lerConfigIA } from "./config-ia";
 import { IDS_TIPO, TIPOS_DOCUMENTO } from "./documentos";
 import type { FichaEdital } from "./ficha";
 
@@ -67,7 +67,7 @@ async function chamarIA(opts: {
     return data.choices?.[0]?.message?.content ?? "";
   }
 
-  const client = new Anthropic({ apiKey: cfg.apiKey, timeout: opts.timeoutMs ?? 300_000 });
+  const client = clienteAnthropic(cfg.apiKey, cfg.workspaceId, { timeout: opts.timeoutMs ?? 300_000 });
   const conteudo: Anthropic.Beta.BetaContentBlockParam[] = [
     // documentos antes do texto: o prompt fala SOBRE eles
     ...(opts.pdfs ?? []).map(

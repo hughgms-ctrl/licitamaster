@@ -21,11 +21,13 @@ export default function FormIA({
   modeloPadrao,
   provedorAtual,
   modeloAtual,
+  workspaceAtual,
 }: {
   modelosAnthropic: { id: string; rotulo: string; dica: string }[];
   modeloPadrao: Record<Provedor, string>;
   provedorAtual: Provedor;
   modeloAtual: string | null;
+  workspaceAtual: string | null;
 }) {
   const [provedor, setProvedor] = useState<Provedor>(provedorAtual);
   const [saida, enviar, enviando] = useActionState(salvarIA, null);
@@ -111,6 +113,20 @@ export default function FormIA({
             required
           />
         </Campo>
+        {provedor === "anthropic" && (
+          <Campo
+            rotulo="ID do workspace (opcional)"
+            dica="Só se a chave foi criada fora de um workspace e a Anthropic pedir. Fica em platform.claude.com, Settings > Workspaces, e começa com wrkspc_."
+          >
+            <Input
+              name="workspace_id"
+              autoComplete="off"
+              className="font-mono"
+              placeholder="wrkspc_…"
+              defaultValue={workspaceAtual ?? ""}
+            />
+          </Campo>
+        )}
       </Secao>
 
       <div className="space-y-3 bg-muted/30 p-4 px-5">

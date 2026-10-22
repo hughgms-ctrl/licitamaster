@@ -52,7 +52,8 @@ export default async function Home() {
         .from("disputas")
         .select(selectComPrazo)
         .eq("status", "sugerida")
-        .gte("licitacao.data_encerramento_proposta", agora)
+        // sem prazo informado no PNCP também entra: sumir com ela seria perder a licitação calado
+        .or(`data_encerramento_proposta.gte.${agora},data_encerramento_proposta.is.null`, { referencedTable: "licitacao" })
         .order("score", { ascending: false })
         .limit(400),
       supabase

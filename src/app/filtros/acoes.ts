@@ -12,6 +12,7 @@ export interface SaidaBusca {
   ok: boolean;
   mensagem: string;
   porCliente?: Record<string, number>;
+  destinoPorCliente?: Record<string, import("@/lib/coleta").DestinoSugestoes>;
   detalhe?: string;
 }
 
@@ -81,6 +82,7 @@ export async function procurarAgora(): Promise<SaidaBusca> {
     ok: !deuRuim,
     mensagem: partes.join(" · "),
     porCliente: r.porCliente,
+    destinoPorCliente: r.destinoPorCliente,
     detalhe: r.erros.length ? r.erros[0] : undefined,
   };
 }

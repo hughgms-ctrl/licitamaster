@@ -254,6 +254,12 @@ export default function Filtros({ clienteId, contexto, perfis, contagens }: Prop
                   .map(([nome, n]) => (
                     <li key={nome}>
                       <b className="num">{n}</b> {nome}
+                      {resultado.destinoPorCliente?.[nome] && (
+                        <span className="text-muted-foreground">
+                          {": "}
+                          {textoDestino(resultado.destinoPorCliente[nome])}
+                        </span>
+                      )}
                     </li>
                   ))}
               </ul>
@@ -820,4 +826,16 @@ function AreaAtuacao({
       </p>
     </div>
   );
+}
+
+/** "2 novas na triagem, 3 já estavam lá, 1 já tratada (enviada ou descartada)". */
+function textoDestino(d: { novas: number; jaNaTriagem: number; outraEtapa: number; prazoFechado: number }) {
+  return [
+    d.novas && `${d.novas} ${d.novas === 1 ? "nova" : "novas"} na triagem`,
+    d.jaNaTriagem && `${d.jaNaTriagem} já ${d.jaNaTriagem === 1 ? "estava" : "estavam"} na triagem`,
+    d.outraEtapa && `${d.outraEtapa} já ${d.outraEtapa === 1 ? "tratada" : "tratadas"} antes (enviada, descartada ou em andamento)`,
+    d.prazoFechado && `${d.prazoFechado} com prazo já encerrado`,
+  ]
+    .filter(Boolean)
+    .join(", ");
 }

@@ -16,6 +16,7 @@ import CopiarLink from "@/components/CopiarLink";
 import { regenerarLink, salvarCliente } from "../acoes";
 import Cofre from "@/components/Cofre";
 import Preparo from "@/components/Preparo";
+import QuaseEntraram, { type LinhaQuase } from "@/components/QuaseEntraram";
 import { progressoPreparo } from "@/lib/preparo";
 import { listar as listarCofre } from "@/lib/cofre";
 import { opApagar, opAtualizar, opLink, opPedirUpload, opRegistrar } from "../acoes-cofre";
@@ -34,10 +35,28 @@ export default async function Cliente({ params }: { params: Promise<{ id: string
     .maybeSingle<ClienteRow>();
   if (!cliente) notFound();
 
-  const [{ data: perfis }, { data: disputas }] = await Promise.all([
+  const agora = new Date().toISOString();
+  const [{ data: perfis }, { data: disputas }, { data: quaseRaw }] = await Promise.all([
     supabase.from("perfis").select("*").eq("cliente_id", id).order("created_at"),
     supabase.from("disputas").select("perfil_id").eq("cliente_id", id).eq("status", "sugerida"),
+    // a tabela pode não existir ainda: sem ela, a aba fica vazia
+    supabase
+      .from("quase_entraram")
+      .select(
+        "numero_controle_pncp, score, termos, tipo, motivo, objeto, orgao, uf, municipio, modalidade, valor_estimado, data_encerramento_proposta, link"
+      )
+      .eq("cliente_id", id)
+      .or(`data_encerramento_proposta.gte.${agora},data_encerramento_proposta.is.null`)
+      .order("score", { ascending: false })
+      .limit(300),
   ]);
+  // O que já virou disputa deste cliente (trazida à mão ou perfil ajustado) sai da lista.
+  const numerosQuase = (quaseRaw ?? []).map((q) => q.numero_controle_pncp as string);
+  const { data: jaNaMesa } = numerosQuase.length
+    ? await supabase.from("disputas").select("licitacao_id").eq("cliente_id", id).in("licitacao_id", numerosQuase)
+    : { data: [] };
+  const naMesa = new Set((jaNaMesa ?? []).map((d) => d.licitacao_id as string));
+  const quase = ((quaseRaw ?? []) as LinhaQuase[]).filter((q) => !naMesa.has(q.numero_controle_pncp));
   const contagens: Record<string, number> = {};
   for (const d of disputas ?? []) {
     if (d.perfil_id) contagens[d.perfil_id] = (contagens[d.perfil_id] ?? 0) + 1;
@@ -90,6 +109,9 @@ export default async function Cliente({ params }: { params: Promise<{ id: string
             <TabsTrigger value="perfis">
               Perfis de busca <span className="num text-xs text-muted-foreground">{nPerfis}</span>
             </TabsTrigger>
+            <TabsTrigger value="quase">
+              Quase entraram <span className="num text-xs text-muted-foreground">{quase.length}</span>
+            </TabsTrigger>
             <TabsTrigger value="cofre">
               Cofre de documentos <span className="num text-xs text-muted-foreground">{documentos.length}</span>
             </TabsTrigger>
@@ -108,6 +130,10 @@ export default async function Cliente({ params }: { params: Promise<{ id: string
             perfis={(perfis ?? []) as Perfil[]}
             contagens={contagens}
           />
+        </TabsContent>
+
+        <TabsContent value="quase" forceMount className={conteudo}>
+          <QuaseEntraram clienteId={id} linhas={quase} />
         </TabsContent>
 
         <TabsContent value="cofre" forceMount className={conteudo}>

@@ -7,7 +7,7 @@ import {
   TAMANHO_PAGINA_MAX,
   type ContratacaoPNCP,
 } from "./pncp";
-import { melhorPorCliente, ufsDoPerfil, type Perfil, type Resultado } from "./scoring";
+import { melhorPorCliente, quaseCasou, ufsDoPerfil, type Perfil, type Resultado } from "./scoring";
 import { alertarOperador, type AlertaOperador } from "./notify";
 
 /** Pausa entre duas chamadas ao PNCP. Sem isso o PNCP estrangula o IP. */
@@ -75,6 +75,8 @@ export interface ResumoColeta {
   porCliente: Record<string, number>;
   /** para onde foi cada uma, por cliente: explica por que a mesa mostra menos que o total */
   destinoPorCliente: Record<string, DestinoSugestoes>;
+  /** nome do cliente → quantas casaram termos do ramo mas ficaram de fora (aba "Quase entraram") */
+  quasePorCliente: Record<string, number>;
   ciclo: number;
   cicloFechou: boolean;
   retomaDe: { modalidade: number; uf: string | null; pagina: number } | null;
@@ -182,6 +184,7 @@ export async function executarColeta(): Promise<SaidaColeta> {
   const erros: string[] = [];
   const porCliente: Record<string, number> = {};
   const destinoPorCliente: Record<string, DestinoSugestoes> = {};
+  const quasePorCliente: Record<string, number> = {};
 
   loop: for (let mi = mi0; mi < modalidades.length; mi++) {
     const modalidade = modalidades[mi];
@@ -234,20 +237,49 @@ export async function executarColeta(): Promise<SaidaColeta> {
           string,
           { c: ContratacaoPNCP; porCliente: Map<string, { perfil: Perfil; resultado: Resultado }> }
         >();
+        // Map: a mesma contratação pode vir repetida na página, e o upsert em lote cairia.
+        const quase = new Map<string, Record<string, unknown>>();
         for (const c of lote.data) {
           if (!c.numeroControlePNCP) continue;
-          const matches = melhorPorCliente(
-            {
-              objeto: c.objetoCompra,
-              uf: c.unidadeOrgao?.ufSigla,
-              municipio: c.unidadeOrgao?.municipioNome,
-              valorEstimado: c.valorTotalEstimado,
-              unidade: c.unidadeOrgao?.nomeUnidade,
-              orgao: c.orgaoEntidade?.razaoSocial,
-            },
-            perfis
-          );
+          const alvo = {
+            objeto: c.objetoCompra,
+            uf: c.unidadeOrgao?.ufSigla,
+            municipio: c.unidadeOrgao?.municipioNome,
+            valorEstimado: c.valorTotalEstimado,
+            unidade: c.unidadeOrgao?.nomeUnidade,
+            orgao: c.orgaoEntidade?.razaoSocial,
+          };
+          const matches = melhorPorCliente(alvo, perfis);
           if (matches.size > 0) candidatos.set(c.numeroControlePNCP, { c, porCliente: matches });
+          for (const [clienteId, q] of quaseCasou(alvo, perfis)) {
+            quase.set(`${c.numeroControlePNCP}|${clienteId}`, {
+              numero_controle_pncp: c.numeroControlePNCP,
+              cliente_id: clienteId,
+              perfil_id: q.perfil.id,
+              score: q.score,
+              termos: q.termos,
+              tipo: q.tipo,
+              motivo: q.motivo,
+              objeto: c.objetoCompra ?? null,
+              orgao: c.orgaoEntidade?.razaoSocial ?? null,
+              uf: c.unidadeOrgao?.ufSigla ?? null,
+              municipio: c.unidadeOrgao?.municipioNome ?? null,
+              modalidade: c.modalidadeNome ?? MODALIDADES[modalidade],
+              valor_estimado: c.valorTotalEstimado ?? null,
+              data_encerramento_proposta: comFusoBrasilia(c.dataEncerramentoProposta),
+              link: linkPNCP(c) ?? c.linkSistemaOrigem ?? null,
+              raw: c,
+              visto_em: new Date().toISOString(),
+            });
+          }
+        }
+        // Sem a tabela (migração não rodada), a lista fica vazia e a coleta segue igual.
+        for (const q of quase.values()) {
+          const nome = nomeCliente.get(q.cliente_id as string) ?? (q.cliente_id as string);
+          quasePorCliente[nome] = (quasePorCliente[nome] ?? 0) + 1;
+        }
+        if (quase.size > 0) {
+          await supabase.from("quase_entraram").upsert([...quase.values()], { onConflict: "numero_controle_pncp,cliente_id" });
         }
 
         if (candidatos.size > 0) {
@@ -278,6 +310,8 @@ export async function executarColeta(): Promise<SaidaColeta> {
   }
 
   const cicloFechou = !truncado;
+  // A lista de "quase entraram" só guarda o que ainda dá para disputar.
+  await supabase.from("quase_entraram").delete().lt("data_encerramento_proposta", new Date().toISOString());
   await supabase
     .from("coleta_estado")
     .update(
@@ -331,6 +365,7 @@ export async function executarColeta(): Promise<SaidaColeta> {
     erros: erros.slice(0, 10),
     porCliente,
     destinoPorCliente,
+    quasePorCliente,
     ciclo,
     cicloFechou,
     retomaDe,
@@ -418,33 +453,9 @@ async function gravarPagina(
       new Date(atualizadoEm).getTime() > new Date(existente.data_atualizacao_pncp as string).getTime();
     mudouPor.set(id, mudou);
 
-    linhasLic.push({
-      numero_controle_pncp: id,
-      modalidade_id: c.modalidadeId ?? modalidade,
-      modalidade_nome: c.modalidadeNome ?? MODALIDADES[modalidade],
-      objeto: c.objetoCompra ?? null,
-      processo: c.processo ?? null,
-      orgao_cnpj: c.orgaoEntidade?.cnpj ?? null,
-      orgao_razao_social: c.orgaoEntidade?.razaoSocial ?? null,
-      unidade_nome: c.unidadeOrgao?.nomeUnidade ?? null,
-      uf: c.unidadeOrgao?.ufSigla ?? null,
-      municipio: c.unidadeOrgao?.municipioNome ?? null,
-      codigo_ibge: c.unidadeOrgao?.codigoIbge ?? null,
-      valor_estimado: c.valorTotalEstimado ?? null,
-      srp: c.srp ?? null,
-      situacao: c.situacaoCompraNome ?? null,
-      amparo_legal: c.amparoLegal?.nome ?? null,
-      modo_disputa: c.modoDisputaNome ?? null,
-      data_abertura_proposta: comFusoBrasilia(c.dataAberturaProposta),
-      data_encerramento_proposta: comFusoBrasilia(c.dataEncerramentoProposta),
-      data_publicacao_pncp: comFusoBrasilia(c.dataPublicacaoPncp),
-      data_atualizacao_pncp: atualizadoEm,
-      link_sistema_origem: c.linkSistemaOrigem ?? null,
-      link_pncp: linkPNCP(c),
-      raw: c,
-      revisoes: ((existente?.revisoes as number | undefined) ?? 0) + (mudou ? 1 : 0),
-      ultima_coleta: new Date().toISOString(),
-    });
+    linhasLic.push(
+      linhaLicitacao(c, modalidade, ((existente?.revisoes as number | undefined) ?? 0) + (mudou ? 1 : 0), atualizadoEm)
+    );
   }
 
   const { error: erroLic } = await supabase
@@ -566,4 +577,35 @@ async function finalizar(
     .from("sync_runs")
     .update({ ...campos, finalizado_em: new Date().toISOString() })
     .eq("id", runId);
+}
+
+/** A linha da tabela licitacoes a partir da contratação do PNCP. */
+export function linhaLicitacao(c: ContratacaoPNCP, modalidade: number, revisoes = 0, atualizadoEm?: string | null) {
+  return {
+    numero_controle_pncp: c.numeroControlePNCP,
+    modalidade_id: c.modalidadeId ?? modalidade,
+    modalidade_nome: c.modalidadeNome ?? MODALIDADES[modalidade],
+    objeto: c.objetoCompra ?? null,
+    processo: c.processo ?? null,
+    orgao_cnpj: c.orgaoEntidade?.cnpj ?? null,
+    orgao_razao_social: c.orgaoEntidade?.razaoSocial ?? null,
+    unidade_nome: c.unidadeOrgao?.nomeUnidade ?? null,
+    uf: c.unidadeOrgao?.ufSigla ?? null,
+    municipio: c.unidadeOrgao?.municipioNome ?? null,
+    codigo_ibge: c.unidadeOrgao?.codigoIbge ?? null,
+    valor_estimado: c.valorTotalEstimado ?? null,
+    srp: c.srp ?? null,
+    situacao: c.situacaoCompraNome ?? null,
+    amparo_legal: c.amparoLegal?.nome ?? null,
+    modo_disputa: c.modoDisputaNome ?? null,
+    data_abertura_proposta: comFusoBrasilia(c.dataAberturaProposta),
+    data_encerramento_proposta: comFusoBrasilia(c.dataEncerramentoProposta),
+    data_publicacao_pncp: comFusoBrasilia(c.dataPublicacaoPncp),
+    data_atualizacao_pncp: atualizadoEm ?? comFusoBrasilia(c.dataAtualizacao),
+    link_sistema_origem: c.linkSistemaOrigem ?? null,
+    link_pncp: linkPNCP(c),
+    raw: c,
+    revisoes,
+    ultima_coleta: new Date().toISOString(),
+  };
 }

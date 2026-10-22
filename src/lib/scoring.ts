@@ -175,6 +175,12 @@ export function pontuar(alvo: AlvoScore, perfil: Perfil): Resultado {
     }
   }
 
+  const { score, termos } = pontosPositivos(texto, perfil);
+  return { score, termos, motivoDescarte: null };
+}
+
+/** Só a soma dos termos positivos, sem área, veto ou faixa de valor. */
+function pontosPositivos(texto: string, perfil: Perfil): { score: number; termos: string[] } {
   const casados = perfil.termos_positivos.filter(({ termo }) => contem(texto, termo));
   const efetivos = semSobreposicao(casados);
 
@@ -196,7 +202,63 @@ export function pontuar(alvo: AlvoScore, perfil: Perfil): Resultado {
   if (fortes >= 2) score += 10;
   if (fortes >= 4) score += 10;
 
-  return { score: Math.min(100, score), termos, motivoDescarte: null };
+  return { score: Math.min(100, score), termos };
+}
+
+export interface QuaseCasou {
+  perfil: Perfil;
+  /** a nota que os termos positivos dariam */
+  score: number;
+  termos: string[];
+  tipo: "nota_baixa" | "termo_negativo" | "valor" | "area";
+  motivo: string;
+}
+
+/**
+ * O que ficou de fora por pouco, por cliente: casou termos do ramo, mas a
+ * nota não chegou no mínimo, ou casaria e um veto (termo negativo, faixa de
+ * valor, área) cortou. Serve para conferir se o perfil está apertado demais.
+ *
+ * Cliente que já casou de verdade por outro perfil não entra. Para não virar
+ * ruído: nota baixa precisa ter pelo menos metade do mínimo; veto só conta se
+ * sem ele a licitação teria entrado.
+ */
+export function quaseCasou(alvo: AlvoScore, perfis: Perfil[]): Map<string, QuaseCasou> {
+  const texto = normalizar([alvo.objeto, alvo.unidade, alvo.orgao].filter(Boolean).join(" "));
+  const casou = new Set<string>();
+  const quase = new Map<string, QuaseCasou>();
+  for (const perfil of perfis) {
+    if (!perfil.ativo) continue;
+    const r = pontuar(alvo, perfil);
+    if (r.score > 0 && r.score >= perfil.score_minimo) {
+      casou.add(perfil.cliente_id);
+      continue;
+    }
+    const pos = pontosPositivos(texto, perfil);
+    if (pos.score <= 0) continue;
+    let item: QuaseCasou | null = null;
+    if (r.motivoDescarte) {
+      if (pos.score < perfil.score_minimo) continue;
+      const tipo = r.motivoDescarte.startsWith("termo negativo")
+        ? "termo_negativo"
+        : r.motivoDescarte.startsWith("valor")
+          ? "valor"
+          : "area";
+      item = { perfil, score: pos.score, termos: pos.termos, tipo, motivo: r.motivoDescarte };
+    } else if (pos.score >= Math.max(1, Math.ceil(perfil.score_minimo / 2))) {
+      item = {
+        perfil,
+        score: pos.score,
+        termos: pos.termos,
+        tipo: "nota_baixa",
+        motivo: `nota ${pos.score}, abaixo do mínimo ${perfil.score_minimo}`,
+      };
+    }
+    const atual = quase.get(perfil.cliente_id);
+    if (item && (!atual || item.score > atual.score)) quase.set(perfil.cliente_id, item);
+  }
+  for (const c of casou) quase.delete(c);
+  return quase;
 }
 
 /** Roda a oportunidade contra todos os perfis e devolve o melhor encaixe. */

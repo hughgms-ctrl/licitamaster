@@ -264,6 +264,16 @@ export default function Filtros({ clienteId, contexto, perfis, contagens }: Prop
                   ))}
               </ul>
             )}
+            {resultado.quasePorCliente && Object.keys(resultado.quasePorCliente).length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Ficaram de fora por pouco:{" "}
+                {Object.entries(resultado.quasePorCliente)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([nome, n]) => `${n} de ${nome}`)
+                  .join(", ")}
+                . Confira na aba “Quase entraram” de cada cliente.
+              </p>
+            )}
             {resultado.detalhe && <p className="text-xs text-muted-foreground">{resultado.detalhe}</p>}
           </Aviso>
         )}

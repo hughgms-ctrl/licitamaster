@@ -10,6 +10,8 @@ import * as cofre from "@/lib/cofre";
 import { registrarEvento } from "@/lib/disputas";
 import type { SaidaCofre } from "@/components/Cofre";
 import { ITENS_MANUAIS, type Preparo } from "@/lib/preparo";
+import type { FichaEdital } from "@/lib/ficha";
+import { lotesDaFicha, MAX_LOTES, validarEscolha, type LoteEscolhido } from "@/lib/lotes";
 
 /**
  * Ações do portal do cliente. A autenticação é o token na URL — então TODA
@@ -41,7 +43,14 @@ export async function responder(
   token: string,
   disputaId: string,
   resposta:
-    | { decisao: "sim"; precoMinimo: number; notas: string; confirmo: boolean }
+    | {
+        decisao: "sim";
+        precoMinimo: number;
+        notas: string;
+        confirmo: boolean;
+        /** quando a licitação tem lotes: os escolhidos, com o mínimo de cada */
+        lotes?: { chave: string; preco_minimo: number }[];
+      }
     | { decisao: "nao"; motivo: string }
 ): Promise<SaidaPortal> {
   const cliente = await clientePorToken(token);
@@ -49,7 +58,7 @@ export async function responder(
 
   const { data: d } = await db()
     .from("disputas")
-    .select("id, status, cliente_id, licitacao:licitacoes(objeto, data_encerramento_proposta)")
+    .select("id, status, cliente_id, licitacao_id, licitacao:licitacoes(objeto, data_encerramento_proposta)")
     .eq("id", disputaId)
     .eq("cliente_id", cliente.id)
     .maybeSingle();
@@ -64,8 +73,19 @@ export async function responder(
   let erro: string | null;
   let aviso: string;
 
+  let escolhidos: LoteEscolhido[] | null = null;
   if (resposta.decisao === "sim") {
-    const preco = Number(resposta.precoMinimo);
+    let preco = Number(resposta.precoMinimo);
+    if (resposta.lotes) {
+      // Os lotes vêm da ficha do edital, conferidos aqui de novo: o navegador não decide o que existe.
+      const { data: fr } = await db().from("fichas_edital").select("ficha").eq("licitacao_id", d.licitacao_id).maybeSingle();
+      const lotes = lotesDaFicha((fr?.ficha as FichaEdital | undefined) ?? null);
+      if (lotes.length === 0 || lotes.length > MAX_LOTES) return { ok: false, mensagem: "Os lotes mudaram. Recarregue a página." };
+      const v = validarEscolha(lotes, resposta.lotes);
+      if (!v.ok) return { ok: false, mensagem: v.mensagem };
+      escolhidos = v.escolhidos;
+      preco = v.total;
+    }
     if (!Number.isFinite(preco) || preco <= 0) {
       return { ok: false, mensagem: "Informe o preço mínimo (maior que zero)." };
     }
@@ -81,9 +101,16 @@ export async function responder(
       clienteId: cliente.id,
       precoMinimo: preco,
       notasCliente: resposta.notas.trim().slice(0, 1000) || undefined,
-      dados: { declaracao: DECLARACAO_APROVACAO },
+      dados: { declaracao: DECLARACAO_APROVACAO, ...(escolhidos ? { lotes: escolhidos } : {}) },
     });
-    aviso = `✅ *${nome}* APROVOU a participação\nPreço mínimo: *${formatarValor(preco)}*\n\n${(lic.objeto ?? "").slice(0, 200)}`;
+    if (!erro && escolhidos) {
+      // A coluna pode não existir em bancos antigos: os lotes ficam ao menos no evento.
+      await db().from("disputas").update({ lotes: escolhidos }).eq("id", disputaId);
+    }
+    const detalheLotes = escolhidos
+      ? `\n${escolhidos.map((l) => `• ${l.rotulo}: mínimo ${formatarValor(l.preco_minimo)}`).join("\n")}`
+      : "";
+    aviso = `✅ *${nome}* APROVOU a participação\nPreço mínimo: *${formatarValor(preco)}*${detalheLotes}\n\n${(lic.objeto ?? "").slice(0, 200)}`;
   } else {
     erro = await moverDisputa({
       disputaId,

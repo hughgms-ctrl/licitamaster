@@ -17,6 +17,7 @@ export async function salvarIA(_: SaidaConfig | null, form: FormData): Promise<S
   const provedor: Provedor = form.get("provedor") === "openai" ? "openai" : "anthropic";
   const modelo = String(form.get("modelo") ?? "").trim();
   const apiKey = String(form.get("api_key") ?? "").trim();
+  const workspaceId = provedor === "anthropic" ? String(form.get("workspace_id") ?? "").trim() || null : null;
 
   if (!modelo) return { ok: false, mensagem: "Escolha o modelo." };
   if (!apiKey) return { ok: false, mensagem: "Cole a chave de API." };
@@ -27,10 +28,14 @@ export async function salvarIA(_: SaidaConfig | null, form: FormData): Promise<S
     return { ok: false, mensagem: "Chave da OpenAI começa com sk-. Confira se copiou a chave certa." };
   }
 
-  const erro = await testarChave(provedor, apiKey, modelo);
+  if (workspaceId && !/^wrkspc_\w+$/.test(workspaceId)) {
+    return { ok: false, mensagem: "O ID do workspace começa com wrkspc_. Copie de platform.claude.com, em Settings > Workspaces." };
+  }
+
+  const erro = await testarChave(provedor, apiKey, modelo, workspaceId);
   if (erro) return { ok: false, mensagem: `A chave não foi salva. ${erro}` };
 
-  await salvarConfigIA(provedor, modelo, apiKey);
+  await salvarConfigIA(provedor, modelo, apiKey, workspaceId);
   revalidatePath("/configuracoes");
   return { ok: true, mensagem: "Chave testada e salva. A IA já está usando esta configuração." };
 }

@@ -66,8 +66,13 @@ export default function RoteiroDisputa({ d, ficha }: { d: DisputaCompleta; ficha
               Nunca dar lance abaixo de{" "}
               <b className="num text-base font-semibold">{formatarValor(d.preco_minimo)}</b>
             </p>
+            {d.lotes && d.lotes.length > 0 && (
+              <p className="num text-xs">
+                {d.lotes.map((x) => `${x.rotulo}: ${formatarValor(x.preco_minimo)}`).join(" · ")}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
-              Preço mínimo informado pelo cliente
+              Preço mínimo informado pelo cliente{d.lotes?.length ? " (soma dos lotes; o piso vale em cada lote)" : ""}
               {d.licitacao.valor_estimado && d.licitacao.valor_estimado > 0
                 ? ` · estimado do órgão ${formatarValor(d.licitacao.valor_estimado)}`
                 : ""}
@@ -92,7 +97,7 @@ export default function RoteiroDisputa({ d, ficha }: { d: DisputaCompleta; ficha
       )}
 
       {["proposta_enviada", "em_disputa"].includes(d.status) && (
-        <AssistenteLance piso={d.preco_minimo} estimado={d.licitacao.valor_estimado} />
+        <AssistenteLance piso={d.preco_minimo} estimado={d.licitacao.valor_estimado} lotes={d.lotes} />
       )}
 
       {erro && <Aviso tom="erro">{erro}</Aviso>}

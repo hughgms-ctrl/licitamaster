@@ -110,6 +110,36 @@ export async function convidarCliente(opts: {
   return enviarWhatsApp(opts.whatsapp, texto);
 }
 
+/** Várias licitações de uma vez para o mesmo cliente: uma mensagem só. */
+export async function convidarClienteVarias(opts: {
+  whatsapp: string | null;
+  contato: string | null;
+  licitacoes: { objeto: string; valor: number | null; encerramento: string | null }[];
+  linkPortal: string;
+}): Promise<boolean> {
+  if (!opts.whatsapp || opts.licitacoes.length === 0) return false;
+  const saudacao = opts.contato ? `Olá, ${opts.contato.split(" ")[0]}!` : "Olá!";
+  const linhas = opts.licitacoes.slice(0, 10).map((l, i) =>
+    [
+      `${i + 1}. *${l.objeto.replace(/\s+/g, " ").slice(0, 140)}*`,
+      `   ${formatarValor(l.valor)}${l.encerramento ? ` · decidir até ${formatarPrazo(new Date(l.encerramento))}` : ""}`,
+    ].join("\n")
+  );
+  const resto = opts.licitacoes.length - linhas.length;
+  const texto = [
+    `${saudacao} Encontramos ${opts.licitacoes.length} licitações que combinam com a sua empresa:`,
+    "",
+    ...linhas,
+    resto > 0 ? `…e mais ${resto}.` : "",
+    "",
+    "Em cada uma, diga se quer participar e o seu *preço mínimo* (o menor valor que ainda dá lucro):",
+    opts.linkPortal,
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
+  return enviarWhatsApp(opts.whatsapp, texto);
+}
+
 function formatarPrazo(d: Date): string {
   const horas = Math.round((d.getTime() - Date.now()) / 36e5);
   const quando = d.toLocaleString("pt-BR", {

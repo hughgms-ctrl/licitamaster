@@ -13,12 +13,14 @@ import {
   brl,
   DECLARACAO_PROPOSTA,
   distribuir,
+  distribuirPorLote,
   lerQuantidade,
   porExtenso,
   totalItem,
   totalProposta,
   type ItemProposta,
 } from "@/lib/proposta";
+import { lotesDaFicha } from "@/lib/lotes";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -27,7 +29,7 @@ import { Campo } from "./ui/campo";
 import { Aviso } from "./ui/aviso";
 import { Linha } from "./ui/linha-papel";
 
-type Modo = "global" | "item";
+type Modo = "global" | "item" | "lote";
 
 interface Cabecalho {
   endereco: string;
@@ -48,6 +50,8 @@ interface Cabecalho {
 interface Dados {
   modo: Modo;
   lance: string;
+  /** modo "lote": lance final de cada lote, pela chave */
+  lances?: Record<string, string>;
   itens: ItemProposta[];
   cabecalho: Cabecalho;
   declaracoes: { texto: string; incluir: boolean }[];
@@ -100,17 +104,32 @@ export default function PropostaAjustada({
   const [relendo, setRelendo] = useState(false);
   const [erroLeitura, setErroLeitura] = useState<string | null>(null);
 
+  // Lotes da licitação e os que o cliente escolheu disputar.
+  const lotes = useMemo(() => lotesDaFicha(f), [f]);
+  const loteDoItem = useMemo(() => {
+    const m = new Map<number, { chave: string; rotulo: string }>();
+    for (const x of lotes) for (const k of x.itens) m.set(k, { chave: x.chave, rotulo: x.rotulo });
+    return m;
+  }, [lotes]);
+  const escolhidos = new Set((d.lotes ?? []).map((x) => x.chave));
+  const lotesEmJogo = lotes.filter((x) => escolhidos.size === 0 || escolhidos.has(x.chave));
+  const temLotes = lotes.some((x) => x.chave.startsWith("L"));
+
   function itensDaFicha(): ItemProposta[] {
     const base: ItemProposta[] = itensFicha.length
-      ? itensFicha.map((it) => {
+      ? itensFicha.map((it, k) => {
           const q = lerQuantidade(it.quantidade);
+          const lote = loteDoItem.get(k) ?? null;
           return {
+            numero: it.numero ?? null,
+            lote,
             descricao: it.descricao,
             quantidade: q.n,
             unidade: q.unidade,
             estimadoTotal: it.valor_estimado,
             unitario: it.valor_estimado ? Math.round((it.valor_estimado / q.n) * 100) / 100 : 0,
-            incluir: true,
+            // o que o cliente não escolheu não entra na proposta
+            incluir: escolhidos.size === 0 || !lote || escolhidos.has(lote.chave),
             marca: "",
           };
         })
@@ -125,13 +144,19 @@ export default function PropostaAjustada({
             marca: "",
           },
         ];
-    return lanceFinal ? distribuir(base, lanceFinal).itens : base;
+    return lanceFinal && escolhidos.size === 0 ? distribuir(base, lanceFinal).itens : base;
   }
 
   const inicial = salva?.dados;
   const [modo, setModo] = useState<Modo>(
-    inicial?.modo ?? (itensFicha.length <= 1 || criterio.includes("global") || !criterio.includes("item") ? "global" : "item")
+    inicial?.modo ??
+      (temLotes
+        ? "lote"
+        : itensFicha.length <= 1 || criterio.includes("global") || !criterio.includes("item")
+          ? "global"
+          : "item")
   );
+  const [lances, setLances] = useState<Record<string, string>>(inicial?.lances ?? {});
   const [lance, setLance] = useState(inicial?.lance ?? (lanceFinal ? reais(lanceFinal) : ""));
   const [itens, setItens] = useState<ItemProposta[]>(() => inicial?.itens ?? itensDaFicha());
   const [sobra, setSobra] = useState(0);
@@ -161,7 +186,7 @@ export default function PropostaAjustada({
 
   function salvar() {
     setErroSalvar(null);
-    const dados: Dados = { modo, lance, itens, cabecalho, declaracoes };
+    const dados: Dados = { modo, lance, lances, itens, cabecalho, declaracoes };
     iniciarSalvar(async () => {
       try {
         const s = await salvarProposta(d.id, dados, totalProposta(itens));
@@ -218,7 +243,14 @@ export default function PropostaAjustada({
         texto: `${acima.length === 1 ? "1 item está" : `${acima.length} itens estão`} acima do valor estimado pelo órgão. Costuma ser motivo de desclassificação.`,
       });
     }
-    if (d.preco_minimo && total > 0 && total < d.preco_minimo) {
+    for (const x of d.lotes ?? []) {
+      const doLote = itens.filter((i) => i.incluir && i.lote?.chave === x.chave);
+      const t = totalProposta(doLote);
+      if (t > 0 && t < x.preco_minimo) {
+        xs.push({ tom: "erro", texto: `O ${x.rotulo} está abaixo do mínimo do cliente (${brl(x.preco_minimo)}).` });
+      }
+    }
+    if (d.preco_minimo && total > 0 && total < d.preco_minimo && !d.lotes?.length) {
       xs.push({ tom: "erro", texto: `O total está abaixo do preço mínimo do cliente (${brl(d.preco_minimo)}).` });
     }
     const vazios = [
@@ -230,7 +262,7 @@ export default function PropostaAjustada({
     ].filter(Boolean);
     if (vazios.length) xs.push({ tom: "alerta", texto: `Preencha antes de imprimir: ${vazios.join(", ")}.` });
     return xs;
-  }, [f, itensFicha, l.valor_estimado, modo, lanceN, total, sobra, itens, d.preco_minimo, cabecalho]);
+  }, [f, itensFicha, l.valor_estimado, modo, lanceN, total, sobra, itens, d.preco_minimo, d.lotes, cabecalho]);
 
   // Ficha que não ajuda a proposta: sem leitura, lida antes de anotar o que o
   // edital pede na proposta, ou com itens que não somam o estimado.
@@ -279,6 +311,7 @@ export default function PropostaAjustada({
           <Campo rotulo="Como ajustar">
             <NativeSelect value={modo} onChange={(e) => setModo(e.target.value as Modo)}>
               <option value="global">Lance global: distribuir</option>
+              {temLotes && <option value="lote">Por lote: lance de cada um</option>}
               <option value="item">Por item: valor de cada um</option>
             </NativeSelect>
           </Campo>
@@ -302,6 +335,38 @@ export default function PropostaAjustada({
                 </Button>
               </div>
             </>
+          ) : modo === "lote" ? (
+            <div className="space-y-3 sm:col-span-2">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {lotesEmJogo.map((x) => (
+                  <Campo key={x.chave} rotulo={`Lance final do ${x.rotulo}`}>
+                    <Input
+                      className="num"
+                      inputMode="decimal"
+                      placeholder="em branco se não ganhou"
+                      value={lances[x.chave] ?? ""}
+                      onChange={(e) => setLances((v) => ({ ...v, [x.chave]: e.target.value }))}
+                    />
+                  </Campo>
+                ))}
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const valores = Object.fromEntries(
+                    Object.entries(lances).map(([k, v]) => [k, lerReais(v) ?? 0])
+                  );
+                  // Lote sem lance (não ganhou) sai da proposta.
+                  const base = itens.map((i) => (i.lote && !(valores[i.lote.chave] > 0) ? { ...i, incluir: false } : i));
+                  const r = distribuirPorLote(base, valores);
+                  setItens(r.itens);
+                  setSobra(r.sobra);
+                }}
+              >
+                <Scale />
+                Distribuir em cada lote
+              </Button>
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground sm:col-span-2">
               Digite na tabela o valor unitário final de cada item que o cliente ganhou e desmarque os que ele não disputou.
@@ -419,8 +484,11 @@ export default function PropostaAjustada({
                       className="accent-violet-600"
                     />
                   </td>
-                  <td className="num border border-zinc-300 p-1.5 text-center">{k + 1}</td>
-                  <td className="border border-zinc-300 p-1.5">{it.descricao}</td>
+                  <td className="num border border-zinc-300 p-1.5 text-center">{it.numero || k + 1}</td>
+                  <td className="border border-zinc-300 p-1.5">
+                    {it.lote && temLotes && <span className="block text-[11px] font-semibold uppercase text-zinc-500">{it.lote.rotulo}</span>}
+                    {it.descricao}
+                  </td>
                   <td className="border border-zinc-300 p-1.5">
                     <Linha placeholder="—" value={it.marca} onChange={(e) => mudarItem(k, { marca: e.target.value })} />
                   </td>

@@ -96,6 +96,8 @@ export interface DisputaRow {
   status: StatusDisputa;
   analise_ia: AnaliseIA | null;
   preco_minimo: number | null;
+  /** lotes que o cliente escolheu, com o mínimo de cada (src/lib/lotes.ts); null = a licitação toda */
+  lotes?: import("./lotes").LoteEscolhido[] | null;
   motivo_recusa: string | null;
   notas_cliente: string | null;
   notas_operador: string | null;

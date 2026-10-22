@@ -73,6 +73,8 @@ export interface ResumoColeta {
   erros: string[];
   /** nome do cliente → quantas licitações casaram nesta coleta */
   porCliente: Record<string, number>;
+  /** para onde foi cada uma, por cliente: explica por que a mesa mostra menos que o total */
+  destinoPorCliente: Record<string, DestinoSugestoes>;
   ciclo: number;
   cicloFechou: boolean;
   retomaDe: { modalidade: number; uf: string | null; pagina: number } | null;
@@ -179,6 +181,7 @@ export async function executarColeta(): Promise<SaidaColeta> {
   const paraAlertar: AlertaOperador[] = [];
   const erros: string[] = [];
   const porCliente: Record<string, number> = {};
+  const destinoPorCliente: Record<string, DestinoSugestoes> = {};
 
   loop: for (let mi = mi0; mi < modalidades.length; mi++) {
     const modalidade = modalidades[mi];
@@ -261,6 +264,11 @@ export async function executarColeta(): Promise<SaidaColeta> {
               const nome = nomeCliente.get(clienteId) ?? clienteId;
               porCliente[nome] = (porCliente[nome] ?? 0) + n;
             }
+            for (const [clienteId, dst] of r.destinos) {
+              const nome = nomeCliente.get(clienteId) ?? clienteId;
+              const acc = (destinoPorCliente[nome] ??= destinoVazio());
+              for (const k of Object.keys(dst) as (keyof DestinoSugestoes)[]) acc[k] += dst[k];
+            }
           }
         }
 
@@ -322,6 +330,7 @@ export async function executarColeta(): Promise<SaidaColeta> {
     segundos: Math.round((Date.now() - inicio) / 1000),
     erros: erros.slice(0, 10),
     porCliente,
+    destinoPorCliente,
     ciclo,
     cicloFechou,
     retomaDe,
@@ -370,9 +379,10 @@ async function gravarPagina(
   atualizados: number;
   alertas: AlertaOperador[];
   porCliente: Map<string, number>;
+  destinos: Map<string, DestinoSugestoes>;
 }> {
   const ids = [...candidatos.keys()];
-  const vazio = { licitacoes: 0, novos: 0, atualizados: 0, alertas: [], porCliente: new Map() };
+  const vazio = { licitacoes: 0, novos: 0, atualizados: 0, alertas: [], porCliente: new Map(), destinos: new Map() };
 
   const [licExistentes, dispExistentes] = await Promise.all([
     supabase
@@ -468,7 +478,9 @@ async function gravarPagina(
   let atualizados = 0;
   const alertas: AlertaOperador[] = [];
   const porCliente = new Map<string, number>();
+  const destinos = new Map<string, DestinoSugestoes>();
   const eventosRetificacao = [];
+  const agora = Date.now();
 
   for (const d of salvas ?? []) {
     const licId = d.licitacao_id as string;
@@ -479,6 +491,13 @@ async function gravarPagina(
     porCliente.set(cliId, (porCliente.get(cliId) ?? 0) + 1);
 
     const cand = candidatos.get(licId)!;
+    const dst = destinos.get(cliId) ?? destinoVazio();
+    destinos.set(cliId, dst);
+    const encerra = comFusoBrasilia(cand.c.dataEncerramentoProposta);
+    if (d.status !== "sugerida") dst.outraEtapa++;
+    else if (encerra && new Date(encerra).getTime() < agora) dst.prazoFechado++;
+    else if (existente) dst.jaNaTriagem++;
+    else dst.novas++;
     const retificou = mudouPor.get(licId) === true;
     const vivo = STATUS_VIVOS.has(d.status as string);
 
@@ -519,7 +538,22 @@ async function gravarPagina(
     await supabase.from("eventos").insert(eventosRetificacao);
   }
 
-  return { licitacoes: linhasLic.length, novos, atualizados, alertas, porCliente };
+  return { licitacoes: linhasLic.length, novos, atualizados, alertas, porCliente, destinos };
+}
+
+export interface DestinoSugestoes {
+  /** entraram agora na triagem */
+  novas: number;
+  /** já estavam na triagem de uma busca anterior */
+  jaNaTriagem: number;
+  /** o operador já tinha mexido: enviada, descartada, em andamento… */
+  outraEtapa: number;
+  /** prazo de proposta já passou: a mesa não mostra */
+  prazoFechado: number;
+}
+
+function destinoVazio(): DestinoSugestoes {
+  return { novas: 0, jaNaTriagem: 0, outraEtapa: 0, prazoFechado: 0 };
 }
 
 async function finalizar(

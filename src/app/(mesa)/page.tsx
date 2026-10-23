@@ -36,6 +36,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
   const { cliente: clienteParam } = await searchParams;
   const clienteFiltro = clienteParam && UUID.test(clienteParam) ? clienteParam : null;
   let totalTriagem = 0;
+  let vencidas = 0;
   let sugeridas: DisputaCompleta[] = [];
   let andamento: DisputaCompleta[] = [];
   let encerradas: DisputaCompleta[] = [];
@@ -65,7 +66,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
       return r;
     };
 
-    const [sug, and, enc, cls, runs, contagem] = await Promise.all([
+    const em72h = new Date(Date.now() + 72 * 36e5).toISOString();
+    const [sug, and, enc, cls, runs, contagem, urgentes, vencidasQ] = await Promise.all([
       // Triagem: só o que ainda dá tempo de disputar, do melhor score para baixo.
       triagem(supabase.from("disputas").select(selectComPrazo))
         .order("score", { ascending: false })
@@ -96,7 +98,22 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
           .from("disputas")
           .select("id, licitacao:licitacoes!inner(data_encerramento_proposta)", { count: "exact" })
       ).limit(1),
+      // As que fecham em 72h entram sempre, mesmo com nota baixa: fora das 400
+      // de maior nota, elas venceriam sem ninguém ver.
+      triagem(supabase.from("disputas").select(selectComPrazo))
+        .lte("licitacao.data_encerramento_proposta", em72h)
+        .order("score", { ascending: false })
+        .limit(300),
+      // Venceram sem decisão nos últimos 30 dias: ficaram na triagem até fechar.
+      supabase
+        .from("disputas")
+        .select("id, licitacao:licitacoes!inner(data_encerramento_proposta)", { count: "exact" })
+        .eq("status", "sugerida")
+        .lt("licitacao.data_encerramento_proposta", agora)
+        .gte("licitacao.data_encerramento_proposta", trintaDias)
+        .limit(1),
     ]);
+    vencidas = (vencidasQ as { count: number | null }).count ?? 0;
     const c = contagem as { count: number | null; error: { message: string } | null };
     if (c.error) console.error("contagem da triagem:", c.error.message);
     // Sem a contagem e com a lista cheia, -1 = "há mais, não sei quantas".
@@ -105,6 +122,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
 
     for (const r of [sug, and, enc, cls]) if (r.error) throw new Error(r.error.message);
     sugeridas = (sug.data ?? []) as unknown as DisputaCompleta[];
+    const ja = new Set(sugeridas.map((d) => d.id));
+    for (const d of (urgentes.data ?? []) as unknown as DisputaCompleta[]) if (!ja.has(d.id)) sugeridas.push(d);
     andamento = (and.data ?? []) as unknown as DisputaCompleta[];
     encerradas = (enc.data ?? []) as unknown as DisputaCompleta[];
     clientes = (cls.data ?? []).map((c) => ({ id: c.id, nome: c.nome_fantasia || c.razao_social }));
@@ -185,6 +204,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
       lidas={lidas}
       comResultado={comResultado}
       totalTriagem={totalTriagem}
+      vencidas={vencidas}
       clienteInicial={clienteFiltro}
     />
   );

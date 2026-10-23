@@ -2,8 +2,9 @@ import Link from "next/link";
 import { Bot, Clock } from "lucide-react";
 import { exigirOperadorPagina } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { limparObjeto } from "@/lib/formato";
 import { calcularMetricas, formatarMinutos, type EventoLinha, type FechadaLinha, type TempoLinha } from "@/lib/metricas";
+import { carregarVencidas, NOTA_ALTA } from "@/lib/vencidas";
+import { formatarData, formatarValor, limparObjeto } from "@/lib/formato";
 import { Cabecalho } from "@/components/Cabecalho";
 import { StatStrip } from "@/components/ui/stat-strip";
 import { Aviso } from "@/components/ui/aviso";
@@ -96,6 +97,7 @@ export default async function PaginaMetricas({ searchParams }: { searchParams: P
   }));
 
   const m = calcularMetricas(eventos, linhasTempo, linhasFechadas);
+  const vencidas = await carregarVencidas(supabase, dias);
 
   // As licitações que mais tomaram tempo da equipe no período.
   const topIds = [...segundosPorDisputa.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
@@ -168,6 +170,66 @@ export default async function PaginaMetricas({ searchParams }: { searchParams: P
               },
             ]}
           />
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold">Venceram sem decisão</h2>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Licitações que ficaram na triagem até o prazo fechar, sem ninguém enviar ao cliente nem descartar. É a perda que
+            não aparece em lugar nenhum. Perto de zero: o processo dá conta. Subindo, principalmente nas que a IA disse que
+            valem a pena: falta gente ou o perfil do cliente está largo.
+          </p>
+          {vencidas.total === 0 ? (
+            <p className="rounded-lg border bg-card p-4 text-sm text-success">Nenhuma licitação venceu sem decisão neste período.</p>
+          ) : (
+            <div className="grid gap-8 xl:grid-cols-2">
+              <div className="min-w-0 overflow-x-auto rounded-lg border bg-card">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Cliente</th>
+                      <th className="px-4 py-2 text-right font-medium">Venceram</th>
+                      <th className="px-4 py-2 text-right font-medium">IA: vale a pena</th>
+                      <th className="px-4 py-2 text-right font-medium">Nota {NOTA_ALTA}+</th>
+                      <th className="px-4 py-2 text-right font-medium">Valor estimado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="num divide-y">
+                    {vencidas.porCliente.map((c) => (
+                      <tr key={c.clienteId}>
+                        <td className="max-w-[14rem] truncate px-4 py-2 font-sans">{c.nome}</td>
+                        <td className="px-4 py-2 text-right">{c.total}</td>
+                        <td className={cn("px-4 py-2 text-right", c.valeAPena > 0 && "font-semibold text-destructive")}>
+                          {c.valeAPena}
+                        </td>
+                        <td className={cn("px-4 py-2 text-right", c.notaAlta > 0 && "text-warning")}>{c.notaAlta}</td>
+                        <td className="px-4 py-2 text-right">{brl(c.valor)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="min-w-0 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">As que mais doem</p>
+                <ul className="divide-y overflow-hidden rounded-lg border bg-card text-sm">
+                  {vencidas.piores.map((v) => (
+                    <li key={v.id}>
+                      <Link href={`/disputas/${v.id}`} className="block space-y-0.5 px-4 py-2.5 hover:bg-accent/40">
+                        <span className="block text-xs text-muted-foreground">
+                          {v.cliente?.nome_fantasia || v.cliente?.razao_social}
+                          {v.analise_ia?.veredito === "vale_a_pena" ? " · IA: vale a pena" : ""} · nota {v.score}
+                        </span>
+                        <span className="block truncate font-medium">{limparObjeto(v.licitacao.objeto ?? "")}</span>
+                        <span className="num block text-xs text-muted-foreground">
+                          {formatarValor(v.licitacao.valor_estimado)} · fechou {formatarData(v.licitacao.data_encerramento_proposta)}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="space-y-3">

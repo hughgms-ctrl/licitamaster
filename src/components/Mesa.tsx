@@ -10,6 +10,7 @@ import type { AnaliseIA, DisputaCompleta, StatusDisputa } from "@/lib/db";
 import { ROTULO_STATUS } from "@/lib/etapas";
 import { formatarData, formatarValor, limparObjeto } from "@/lib/formato";
 import { cn } from "@/lib/utils";
+import { prioridade } from "@/lib/prioridade";
 import { avisar, Prazo, rotuloVeredito, tomVeredito, useAcoesDisputa } from "./disputa-comum";
 import { Cabecalho } from "./Cabecalho";
 import { TOM_STATUS } from "./tons";
@@ -43,7 +44,7 @@ const ABAS: { id: string; rotulo: string; status: StatusDisputa[] }[] = [
 
 /** Uma linha sobre o que fazer em cada aba. */
 const AJUDA_ABA: Record<string, string> = {
-  triagem: "O que a coleta encontrou para os perfis dos clientes. A IA já analisa as melhores sozinha; as que valem a pena vêm primeiro. Você decide o que enviar.",
+  triagem: "O que a coleta encontrou para os perfis dos clientes, em ordem de prioridade: nota, veredito da IA e prazo. Nada é escondido; o mais importante só vem antes. Você decide o que enviar.",
   cliente: "Esperando o cliente decidir no portal. Ele recebeu o link pelo WhatsApp.",
   preparacao: "Aprovadas com preço mínimo. Monte a proposta e confira a habilitação.",
   disputa: "Propostas enviadas e sessões em andamento.",
@@ -65,6 +66,8 @@ interface Props {
   totalTriagem: number;
   /** cliente escolhido na URL: a triagem veio inteira só dele */
   clienteInicial: string | null;
+  /** venceram na triagem sem decisão nos últimos 30 dias */
+  vencidas: number;
 }
 
 export default function Mesa({
@@ -76,6 +79,7 @@ export default function Mesa({
   comResultado,
   totalTriagem,
   clienteInicial,
+  vencidas,
 }: Props) {
   const [disputas, setDisputas] = useState(iniciais);
   // Depois de "Buscar agora" a página recarrega os dados do servidor; sem
@@ -151,16 +155,18 @@ export default function Mesa({
         .toLowerCase();
       return texto.includes(termo);
     });
-    // Na triagem, o que a IA já disse que vale a pena vem primeiro; o que ela
-    // disse que não vale vai para o fim. Dentro de cada grupo, a nota manda.
+    // Na triagem, a ordem é a prioridade: nota do perfil, veredito da IA e
+    // prazo. Nada sai da lista; o que importa só vem antes.
     if (aba === "triagem") {
-      const peso = (d: DisputaCompleta) =>
-        ({ vale_a_pena: 0, talvez: 1, nao_vale: 3 } as const)[d.analise_ia?.veredito ?? "talvez"] + (d.analise_ia ? 0 : 1.5);
-      lista.sort((a, b) => peso(a) - peso(b) || b.score - a.score);
+      lista.sort(
+        (a, b) =>
+          prioridade(b, b.licitacao.data_encerramento_proposta, agora) -
+            prioridade(a, a.licitacao.data_encerramento_proposta, agora) || b.score - a.score
+      );
     }
     return lista;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disputas, aba, cliente, busca, uf, cidade]);
+  }, [disputas, aba, cliente, busca, uf, cidade, agora]);
 
   // Para o resumo do topo: o que fecha em 48h na triagem pede atenção hoje.
   const urgentes = useMemo(
@@ -265,6 +271,16 @@ export default function Mesa({
           { rotulo: "Com o cliente", valor: porAba.cliente },
           { rotulo: "Em preparação", valor: porAba.preparacao },
           { rotulo: "Em disputa", valor: porAba.disputa },
+          {
+            rotulo: "Venceram sem decisão",
+            valor: vencidas,
+            tom: vencidas > 0 ? "perigo" : "sucesso",
+            detalhe: (
+              <Link href="/metricas" className="hover:underline">
+                30 dias · ver quais
+              </Link>
+            ),
+          },
           {
             rotulo: "Ganhas em 30 dias",
             valor: disputas.filter((d) => d.status === "ganhou" && (cliente === "todos" || d.cliente_id === cliente)).length,

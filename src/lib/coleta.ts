@@ -82,6 +82,9 @@ export interface ResumoColeta {
   retomaDe: { modalidade: number; uf: string | null; pagina: number } | null;
 }
 
+/** Páginas do PNCP buscadas ao mesmo tempo. Uma por vez, uma página leva ~6s e o ciclo inteiro levava dias. */
+const PAGINAS_EM_PARALELO = Math.max(1, Math.min(6, Number(process.env.PNCP_PARALELO ?? 3)));
+
 export type SaidaColeta =
   | { ok: false; erro: string; status: number }
   | { ok: true; resumo: ResumoColeta; status: number };
@@ -100,12 +103,14 @@ export type SaidaColeta =
  * Retomável: grava em `coleta_estado` onde parou. Com pregão ligado o Brasil
  * inteiro são centenas de páginas, e a varredura completa fecha ao longo de
  * várias execuções.
+ *
+ * `orcamentoMs`: quanto tempo esta chamada pode varrer antes de gravar o
+ * cursor e parar. O agendador usa quase todo o teto da função; o botão da
+ * mesa, menos, porque tem gente esperando.
  */
-export async function executarColeta(): Promise<SaidaColeta> {
+export async function executarColeta(opts: { orcamentoMs?: number } = {}): Promise<SaidaColeta> {
   const inicio = Date.now();
-  // 45s porque no plano Hobby da Vercel a função morre aos 60s; os 15s de
-  // folga são para gravar o cursor. Num host sem teto, suba pela variável.
-  const orcamentoMs = Number(process.env.SYNC_ORCAMENTO_MS ?? 45_000);
+  const orcamentoMs = opts.orcamentoMs ?? 45_000;
 
   const supabase = db();
   const modalidades = modalidadesConfiguradas();
@@ -195,6 +200,7 @@ export async function executarColeta(): Promise<SaidaColeta> {
       let pagina = primeiraFatia ? paginaInicial : 1;
       primeiraFatia = false;
       let totalPaginas = Math.max(1, pagina);
+      const adiantadas = new Map<number, Promise<{ lote: Awaited<ReturnType<typeof buscarPropostasAbertas>> } | { erro: Error }>>();
 
       while (pagina <= totalPaginas) {
         if (Date.now() - inicio > orcamentoMs) {
@@ -202,25 +208,38 @@ export async function executarColeta(): Promise<SaidaColeta> {
           retomaDe = { modalidade, uf: uf ?? null, pagina };
           break loop;
         }
-        if (paginas + paginasPuladas > 0) await sleep(DELAY_ENTRE_PAGINAS_MS);
-
-        let lote;
-        try {
-          lote = await buscarPropostasAbertas({
-            dataFinal,
-            codigoModalidadeContratacao: modalidade,
-            pagina,
-            tamanhoPagina: TAMANHO_PAGINA_MAX,
-            uf,
-            deadline: inicio + orcamentoMs,
-          });
-        } catch (e) {
-          erros.push(`mod ${modalidade}${uf ? `/${uf}` : ""} pág ${pagina}: ${(e as Error).message}`);
+        // Busca adiantada: as próximas páginas desta fatia já saem enquanto
+        // esta é processada. O cursor continua sendo `pagina`: se o tempo
+        // acabar, o que foi buscado e não processado é buscado de novo depois.
+        for (let k = 0; k < PAGINAS_EM_PARALELO; k++) {
+          const p = pagina + k;
+          if (p > totalPaginas || adiantadas.has(p)) continue;
+          if (p > pagina || paginas + paginasPuladas > 0) await sleep(DELAY_ENTRE_PAGINAS_MS);
+          adiantadas.set(
+            p,
+            buscarPropostasAbertas({
+              dataFinal,
+              codigoModalidadeContratacao: modalidade,
+              pagina: p,
+              tamanhoPagina: TAMANHO_PAGINA_MAX,
+              uf,
+              deadline: inicio + orcamentoMs,
+            }).then(
+              (lote) => ({ lote }),
+              (e: unknown) => ({ erro: e as Error })
+            )
+          );
+        }
+        const r = await adiantadas.get(pagina)!;
+        adiantadas.delete(pagina);
+        if ("erro" in r) {
+          erros.push(`mod ${modalidade}${uf ? `/${uf}` : ""} pág ${pagina}: ${r.erro.message}`);
           paginasPuladas++;
           if (pagina === 1) fatiasPerdidas++;
           pagina++;
           continue;
         }
+        const lote = r.lote;
 
         paginas++;
         totalPaginas = Math.max(lote.totalPaginas, 1);

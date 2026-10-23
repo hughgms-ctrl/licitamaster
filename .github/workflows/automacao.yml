@@ -5,8 +5,8 @@ name: Análise automática
 # o operador continua decidindo o que vai para ele.
 on:
   schedule:
-    # 30 minutos depois da coleta (7h37 e 19h37 de Brasília)
-    - cron: "37 10,22 * * *"
+    # Depois de cada coleta, que leva perto de 1h (8h17, 14h17 e 20h17 de Brasília)
+    - cron: "17 11,17,23 * * *"
   workflow_dispatch:
 
 jobs:

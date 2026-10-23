@@ -4,6 +4,7 @@ import { reunirPDFs } from "./edital";
 import { lerConfigIA } from "./config-ia";
 import { registrarEvento } from "./disputas";
 import type { FichaRow } from "./ficha";
+import { prioridade } from "./prioridade";
 
 /**
  * O trabalho de leitura que não precisa de gente: a análise rápida das
@@ -62,6 +63,10 @@ export async function lerEditalDisputa(d: DisputaCompleta, ator: Ator) {
 export interface ResumoAutomacao {
   editaisLidos: number;
   analisadas: number;
+  /** análises automáticas já feitas hoje, contando as desta rodada */
+  analisadasHoje: number;
+  /** teto diário de análises automáticas (o gasto com IA) */
+  tetoDia: number;
   erros: string[];
   segundos: number;
   /** ficou trabalho para a próxima rodada */
@@ -114,7 +119,22 @@ export async function rodarAutomacao(orcamentoMs = 240_000): Promise<ResumoAutom
     }
   }
 
-  // 2. Análise rápida das sugeridas boas.
+  // 2. Análise rápida das sugeridas boas, por prioridade (nota + prazo): as
+  //    que fecham antes passam na frente. O teto é de gasto por dia, não de
+  //    lista: o que ficar sem análise continua visível na triagem.
+  const tetoDia = Number(process.env.AUTO_ANALISE_DIA ?? 300);
+  // Meia-noite de Brasília (UTC-3 fixo, sem horário de verão desde 2019).
+  const br = new Date(Date.now() - 3 * 36e5);
+  const desdeMeiaNoite = new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), br.getUTCDate()) + 3 * 36e5).toISOString();
+  const { count: feitasHoje } = await supabase
+    .from("eventos")
+    .select("id", { count: "exact" })
+    .eq("ator", "sistema")
+    .eq("tipo", "analise_ia")
+    .gte("created_at", desdeMeiaNoite)
+    .limit(1);
+  let analisadasHoje = feitasHoje ?? 0;
+
   const { data: sugeridas } = await supabase
     .from("disputas")
     .select(SELECT_DISPUTA_COMPLETA.replace("licitacao:licitacoes(*)", "licitacao:licitacoes!inner(*)"))
@@ -123,15 +143,20 @@ export async function rodarAutomacao(orcamentoMs = 240_000): Promise<ResumoAutom
     .gte("score", scoreMinimo)
     .gte("licitacao.data_encerramento_proposta", agora)
     .order("score", { ascending: false })
-    .limit(40);
-  for (const d of (sugeridas ?? []) as unknown as DisputaCompleta[]) {
-    if (!sobraTempo(30_000)) {
+    .limit(500);
+  const fila = ((sugeridas ?? []) as unknown as DisputaCompleta[]).sort(
+    (a, b) =>
+      prioridade(b, b.licitacao.data_encerramento_proposta) - prioridade(a, a.licitacao.data_encerramento_proposta)
+  );
+  for (const d of fila) {
+    if (analisadasHoje >= tetoDia || !sobraTempo(30_000)) {
       sobrou = true;
       break;
     }
     try {
       await analisarDisputa(d, "sistema");
       analisadas++;
+      analisadasHoje++;
     } catch (e) {
       erros.push(`análise ${d.id}: ${(e as Error).message}`);
       // Sem IA configurada, todas vão falhar igual: não adianta insistir.
@@ -139,5 +164,5 @@ export async function rodarAutomacao(orcamentoMs = 240_000): Promise<ResumoAutom
     }
   }
 
-  return { editaisLidos, analisadas, erros: erros.slice(0, 10), segundos: Math.round((Date.now() - inicio) / 1000), sobrou };
+  return { editaisLidos, analisadas, analisadasHoje, tetoDia, erros: erros.slice(0, 10), segundos: Math.round((Date.now() - inicio) / 1000), sobrou };
 }

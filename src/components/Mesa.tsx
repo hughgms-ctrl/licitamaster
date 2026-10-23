@@ -214,7 +214,7 @@ export default function Mesa({
   const triagemCarregada = disputas.filter((d) => d.status === "sugerida").length;
   const semFiltroLocal = busca === "" && uf === "todos" && cidade === "todas";
   const nTriagem = semFiltroLocal ? Math.max(totalTriagem, porAba.triagem) : porAba.triagem;
-  const cortada = totalTriagem > triagemCarregada;
+  const cortada = totalTriagem < 0 || totalTriagem > triagemCarregada;
 
   const filtrando = busca !== "" || cliente !== "todos" || uf !== "todos" || cidade !== "todas";
 
@@ -255,7 +255,7 @@ export default function Mesa({
       <StatStrip
         className="mb-6"
         itens={[
-          { rotulo: "Na triagem", valor: nTriagem },
+          { rotulo: "Na triagem", valor: totalTriagem < 0 && semFiltroLocal ? `${nTriagem}+` : nTriagem },
           {
             rotulo: "Fecham em 48h",
             valor: urgentes,
@@ -356,7 +356,8 @@ export default function Mesa({
       <p className="mb-3 text-sm text-muted-foreground">{AJUDA_ABA[aba]}</p>
       {aba === "triagem" && cortada && (
         <Aviso tom="alerta" className="mb-3">
-          Mostrando as {triagemCarregada} de maior nota, de {totalTriagem} na triagem.{" "}
+          Mostrando as {triagemCarregada} de maior nota
+          {totalTriagem > 0 ? `, de ${totalTriagem} na triagem` : "; há mais na triagem"}.{" "}
           {cliente === "todos"
             ? "Escolha um cliente acima para ver todas as dele."
             : "Este cliente tem mais do que a mesa mostra: aperte o perfil de busca dele."}

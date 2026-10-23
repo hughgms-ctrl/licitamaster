@@ -25,8 +25,17 @@ const EM_ANDAMENTO = [
 ];
 const ENCERRADOS = ["ganhou", "perdeu", "desistiu", "descartada"];
 
-export default async function Home() {
+/** Quantas da triagem a mesa carrega de uma vez (as de maior nota). */
+const LIMITE_TRIAGEM = 400;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export default async function Home({ searchParams }: { searchParams: Promise<{ cliente?: string }> }) {
   await exigirOperadorPagina();
+  // Com um cliente escolhido, a triagem vem inteira só dele: sem isso, um
+  // cliente de perfil largo ocupa as 400 vagas e os outros somem da mesa.
+  const { cliente: clienteParam } = await searchParams;
+  const clienteFiltro = clienteParam && UUID.test(clienteParam) ? clienteParam : null;
+  let totalTriagem = 0;
   let sugeridas: DisputaCompleta[] = [];
   let andamento: DisputaCompleta[] = [];
   let encerradas: DisputaCompleta[] = [];
@@ -45,17 +54,22 @@ export default async function Home() {
       "licitacao:licitacoes(*)",
       "licitacao:licitacoes!inner(*)"
     );
-
-    const [sug, and, enc, cls, runs] = await Promise.all([
-      // Triagem: só o que ainda dá tempo de disputar, do melhor score para baixo.
-      supabase
-        .from("disputas")
-        .select(selectComPrazo)
+    // O mesmo recorte da triagem serve para a lista e para a contagem.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const triagem = (q: any) => {
+      let r = q
         .eq("status", "sugerida")
         // sem prazo informado no PNCP também entra: sumir com ela seria perder a licitação calado
-        .or(`data_encerramento_proposta.gte.${agora},data_encerramento_proposta.is.null`, { referencedTable: "licitacao" })
+        .or(`data_encerramento_proposta.gte.${agora},data_encerramento_proposta.is.null`, { referencedTable: "licitacao" });
+      if (clienteFiltro) r = r.eq("cliente_id", clienteFiltro);
+      return r;
+    };
+
+    const [sug, and, enc, cls, runs, contagem] = await Promise.all([
+      // Triagem: só o que ainda dá tempo de disputar, do melhor score para baixo.
+      triagem(supabase.from("disputas").select(selectComPrazo))
         .order("score", { ascending: false })
-        .limit(400),
+        .limit(clienteFiltro ? 1000 : LIMITE_TRIAGEM),
       supabase
         .from("disputas")
         .select(SELECT_DISPUTA_COMPLETA)
@@ -76,7 +90,13 @@ export default async function Home() {
         .not("finalizado_em", "is", null)
         .order("id", { ascending: false })
         .limit(1),
+      triagem(
+        supabase
+          .from("disputas")
+          .select("id, licitacao:licitacoes!inner(data_encerramento_proposta)", { count: "exact", head: true })
+      ),
     ]);
+    totalTriagem = (contagem as { count: number | null }).count ?? 0;
 
     for (const r of [sug, and, enc, cls]) if (r.error) throw new Error(r.error.message);
     sugeridas = (sug.data ?? []) as unknown as DisputaCompleta[];
@@ -87,8 +107,12 @@ export default async function Home() {
 
     // Só para os selos do card: qual edital já foi lido, qual sessão já tem
     // lances registrados. O conteúdo abre na página de cada licitação.
-    const { data: fs } = await supabase.from("fichas_edital").select("licitacao_id").limit(5000);
-    for (const f of fs ?? []) lidas[f.licitacao_id as string] = true;
+    // Só das carregadas, em lotes: o Supabase devolve no máximo 1000 linhas.
+    const idsLic = [...new Set([...sugeridas, ...andamento, ...encerradas].map((d) => d.licitacao_id))];
+    for (let i = 0; i < idsLic.length; i += 200) {
+      const { data: fs } = await supabase.from("fichas_edital").select("licitacao_id").in("licitacao_id", idsLic.slice(i, i + 200));
+      for (const f of fs ?? []) lidas[f.licitacao_id as string] = true;
+    }
     const comSessao = [...andamento, ...encerradas]
       .filter((d) => ["em_disputa", "ganhou", "perdeu", "desistiu"].includes(d.status))
       .map((d) => d.id)
@@ -155,6 +179,8 @@ export default async function Home() {
       ultimaColeta={ultimaColeta}
       lidas={lidas}
       comResultado={comResultado}
+      totalTriagem={totalTriagem}
+      clienteInicial={clienteFiltro}
     />
   );
 }

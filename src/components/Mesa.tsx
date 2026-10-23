@@ -61,9 +61,22 @@ interface Props {
   lidas: Record<string, true>;
   /** disputas com o resultado da sessão já registrado */
   comResultado: Record<string, true>;
+  /** total real da triagem no banco (a mesa carrega só as de maior nota) */
+  totalTriagem: number;
+  /** cliente escolhido na URL: a triagem veio inteira só dele */
+  clienteInicial: string | null;
 }
 
-export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaColeta, lidas, comResultado }: Props) {
+export default function Mesa({
+  disputas: iniciais,
+  clientes,
+  exclusivas,
+  ultimaColeta,
+  lidas,
+  comResultado,
+  totalTriagem,
+  clienteInicial,
+}: Props) {
   const [disputas, setDisputas] = useState(iniciais);
   // Depois de "Buscar agora" a página recarrega os dados do servidor; sem
   // isto a lista continuaria mostrando o estado de antes da busca.
@@ -71,7 +84,12 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
   const router = useRouter();
   const [buscando, setBuscando] = useState(false);
   const [aba, setAba] = useState("triagem");
-  const [cliente, setCliente] = useState<string>("todos");
+  const [cliente, setCliente] = useState<string>(clienteInicial ?? "todos");
+  // Trocar de cliente busca a triagem dele no servidor (a lista carregada é limitada).
+  function escolherCliente(v: string) {
+    setCliente(v);
+    router.push(v === "todos" ? "/" : `/?cliente=${v}`, { scroll: false });
+  }
   const [uf, setUf] = useState("todos");
   const [cidade, setCidade] = useState("todas");
   const [busca, setBusca] = useState("");
@@ -191,6 +209,13 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
     });
   }
 
+  // Os filtros de lugar e a busca rodam no navegador, sobre o que foi carregado;
+  // sem eles, o número da triagem é o do banco.
+  const triagemCarregada = disputas.filter((d) => d.status === "sugerida").length;
+  const semFiltroLocal = busca === "" && uf === "todos" && cidade === "todas";
+  const nTriagem = semFiltroLocal ? Math.max(totalTriagem, porAba.triagem) : porAba.triagem;
+  const cortada = totalTriagem > triagemCarregada;
+
   const filtrando = busca !== "" || cliente !== "todos" || uf !== "todos" || cidade !== "todas";
 
   return (
@@ -230,7 +255,7 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
       <StatStrip
         className="mb-6"
         itens={[
-          { rotulo: "Na triagem", valor: porAba.triagem },
+          { rotulo: "Na triagem", valor: nTriagem },
           {
             rotulo: "Fecham em 48h",
             valor: urgentes,
@@ -269,7 +294,7 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
                     aba === a.id ? "bg-primary/10 text-primary dark:text-sidebar-primary" : "text-muted-foreground"
                   )}
                 >
-                  {porAba[a.id]}
+                  {a.id === "triagem" ? nTriagem : porAba[a.id]}
                 </span>
               </button>
             ))}
@@ -281,7 +306,7 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
             aria-label="Cliente"
             className="sm:w-48"
             value={cliente}
-            onChange={(e) => setCliente(e.target.value)}
+            onChange={(e) => escolherCliente(e.target.value)}
           >
             <option value="todos">Todos os clientes</option>
             {clientes.map((c) => (
@@ -329,6 +354,14 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
       </div>
 
       <p className="mb-3 text-sm text-muted-foreground">{AJUDA_ABA[aba]}</p>
+      {aba === "triagem" && cortada && (
+        <Aviso tom="alerta" className="mb-3">
+          Mostrando as {triagemCarregada} de maior nota, de {totalTriagem} na triagem.{" "}
+          {cliente === "todos"
+            ? "Escolha um cliente acima para ver todas as dele."
+            : "Este cliente tem mais do que a mesa mostra: aperte o perfil de busca dele."}
+        </Aviso>
+      )}
 
       {enviaveis.length > 1 && (
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
@@ -352,7 +385,7 @@ export default function Mesa({ disputas: iniciais, clientes, exclusivas, ultimaC
               size="sm"
               onClick={() => {
                 setBusca("");
-                setCliente("todos");
+                escolherCliente("todos");
                 setUf("todos");
                 setCidade("todas");
               }}

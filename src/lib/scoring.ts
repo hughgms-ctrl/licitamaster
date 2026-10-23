@@ -239,6 +239,9 @@ export function quaseCasou(alvo: AlvoScore, perfis: Perfil[]): Map<string, Quase
     let item: QuaseCasou | null = null;
     if (r.motivoDescarte) {
       if (pos.score < perfil.score_minimo) continue;
+      // Fora da área é a maioria do Brasil para um perfil regional: só lista
+      // o que casou forte (nota de alerta), senão a lista vira ruído.
+      if (r.motivoDescarte.startsWith("fora da área") && pos.score < Math.max(perfil.score_alerta, perfil.score_minimo)) continue;
       const tipo = r.motivoDescarte.startsWith("termo negativo")
         ? "termo_negativo"
         : r.motivoDescarte.startsWith("valor")

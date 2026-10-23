@@ -68,11 +68,13 @@ jobs:
             return $limpa
           }
 
-          varrer; r=$?
+          # `|| r=$?`: o shell roda com -e, e um `varrer` que devolve 1
+          # derrubava o script antes de tentar de novo.
+          r=0; varrer || r=$?
           if [ $r -eq 1 ]; then
             echo "O PNCP recusou parte da varredura. Esperando 2 minutos para refazer…"
             sleep 120
-            varrer; r=$?
+            r=0; varrer || r=$?
           fi
 
           if [ $r -ne 0 ]; then

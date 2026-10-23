@@ -230,8 +230,32 @@ export async function executarColeta(opts: { orcamentoMs?: number } = {}): Promi
             )
           );
         }
-        const r = await adiantadas.get(pagina)!;
+        let r = await adiantadas.get(pagina)!;
         adiantadas.delete(pagina);
+        // Falhou perto do fim do orçamento (429 sem tempo de esperar, ou
+        // timeout): não pula a página, para aqui e a próxima chamada começa
+        // dela. Pular perdia de vez as últimas páginas de cada chamada.
+        if ("erro" in r && Date.now() + 60_000 > inicio + orcamentoMs) {
+          truncado = true;
+          retomaDe = { modalidade, uf: uf ?? null, pagina };
+          break loop;
+        }
+        // A primeira página da fatia decide se a modalidade inteira é lida:
+        // com tempo sobrando, espera e tenta mais uma vez antes de desistir.
+        if ("erro" in r && pagina === 1) {
+          await sleep(30_000);
+          r = await buscarPropostasAbertas({
+            dataFinal,
+            codigoModalidadeContratacao: modalidade,
+            pagina,
+            tamanhoPagina: TAMANHO_PAGINA_MAX,
+            uf,
+            deadline: inicio + orcamentoMs,
+          }).then(
+            (lote) => ({ lote }),
+            (e: unknown) => ({ erro: e as Error })
+          );
+        }
         if ("erro" in r) {
           erros.push(`mod ${modalidade}${uf ? `/${uf}` : ""} pág ${pagina}: ${r.erro.message}`);
           paginasPuladas++;

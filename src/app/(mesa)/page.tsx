@@ -90,13 +90,18 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
         .not("finalizado_em", "is", null)
         .order("id", { ascending: false })
         .limit(1),
+      // GET com limit(1) em vez de HEAD: no HEAD o erro vem sem corpo e a contagem some calada.
       triagem(
         supabase
           .from("disputas")
-          .select("id, licitacao:licitacoes!inner(data_encerramento_proposta)", { count: "exact", head: true })
-      ),
+          .select("id, licitacao:licitacoes!inner(data_encerramento_proposta)", { count: "exact" })
+      ).limit(1),
     ]);
-    totalTriagem = (contagem as { count: number | null }).count ?? 0;
+    const c = contagem as { count: number | null; error: { message: string } | null };
+    if (c.error) console.error("contagem da triagem:", c.error.message);
+    // Sem a contagem e com a lista cheia, -1 = "há mais, não sei quantas".
+    totalTriagem =
+      c.count ?? ((sug.data ?? []).length >= (clienteFiltro ? 1000 : LIMITE_TRIAGEM) ? -1 : (sug.data ?? []).length);
 
     for (const r of [sug, and, enc, cls]) if (r.error) throw new Error(r.error.message);
     sugeridas = (sug.data ?? []) as unknown as DisputaCompleta[];
